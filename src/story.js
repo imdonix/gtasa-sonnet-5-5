@@ -12,6 +12,7 @@ export const STORY1 = [
   // ============================================================================================ 1
   {
     id: 'm01', title: 'Welcome Home', autostart: true, letter: 'M', color: 0x40ff80, reward: 300, respect: 2, density: 0.5,
+    where: () => doorOf('terminal') || doorOf('home'),
     async run(r) {
       const term = doorOf('terminal') || doorOf('home');
       const tp = { x: term.x, z: term.z };

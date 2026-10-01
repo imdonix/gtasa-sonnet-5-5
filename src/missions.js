@@ -260,12 +260,14 @@ export class MissionManager {
     else { const s = G.game.spawnPoint; G.game.teleport(s.x, s.z, s.yaw); G.player.controlEnabled = true; }
   }
   available(def) { const needs = def.needs || (def.side ? ['m04'] : null); return (def.side || !this.done.has(def.id)) && (!needs || needs.every(n => this.done.has(n))) && !(def.when && !def.when(this)); }
+  // the story mission to do next: the running one, else the first available main mission
+  nextMain() { if (this.active) return this.active.def; return this.defs.find(d => !d.side && this.available(d)) || null; }
   clearStarts() { for (const [id, s] of this.startMarkers) { G.markers.remove(s.marker); G.blips.remove(s.blip); if (s.ped) G.peds.remove(s.ped); } this.startMarkers.clear(); }
   refreshStarts() {
     this.clearStarts();
     if (this.active || !this.storyLoaded) return;
     for (const def of this.defs) {
-      if (!this.available(def) || def.autostart) continue;
+      if (!this.available(def)) continue;   // even auto-started missions get a marker again if they were failed/aborted
       const where = def.where ? def.where() : null; if (!where) continue;
       const col = def.color ?? (def.side ? 0x40d0ff : 0xffd040);
       const marker = G.markers.add({ x: where.x, z: where.z, radius: 2.3, color: col, once: false, footOnly: !def.vehicleStart, onEnter: () => this.tryStart(def), arrow: true });
@@ -280,6 +282,9 @@ export class MissionManager {
       }
       this.startMarkers.set(def.id, { marker, blip, ped });
     }
+    // flag the next main quest so the HUD / radar / map can highlight it
+    const next = this.nextMain(); const ne = next && this.startMarkers.get(next.id);
+    if (ne) { ne.blip.nextQuest = true; ne.marker.nextQuest = true; }
   }
   tryStart(def) { if (this.active || G.game.state !== 'play') return; if (def.canStart && !def.canStart()) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify(def.cantStart || 'You cannot start this yet'); } return; } if (G.police.stars > 0) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify('Lose the cops first'); } return; } this.start(def); }
   abortAll() { if (this.active) { this.active.ended = true; this.active.abortAll(new MissionAbort()); this.active.cleanup(); this.active = null; } G.game.inCutscene = false; G.camera && G.camera.endCine(); if (G.hud) { G.hud.setCinematic(false); G.hud.fade(0, 100); G.hud.clearSubs(); } G.player.controlEnabled = true; G.game.timeScale = 1; G.missionDensity = 1; this.blocksShops = false; this.restoreAmbient(); }
@@ -343,6 +348,8 @@ export class MissionManager {
       if (this.active === r) { this.active = null; G.missionDensity = 1; this.blocksShops = false; this.restoreAmbient(); }
       if (G.police.stars > 0 && !def.keepWanted) G.police.clear();
       this.refreshStarts();
+      const nx = this.nextMain();
+      if (nx) G.hud.notify('Next mission: ' + nx.title + ' — follow the gold marker');
       if (G.game.canSave()) { await sleep(2500); if (G.game.state === 'play' && G.game.canSave() && !G.game.inCutscene) { G.game.save(); G.hud.notify('Game saved'); } }
     } else {
       if (failReason !== null) { G.audio.play('mission_fail'); G.hud.missionFailed(failReason); if (def.giver) G.hud.notify('Go back to ' + (def.giverName || def.giver[0].toUpperCase() + def.giver.slice(1)) + ' to try again'); }

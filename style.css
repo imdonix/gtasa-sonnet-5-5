@@ -11,6 +11,10 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-f
 #radarBars { position: absolute; left: 0; top: 0; width: 210px; height: 210px; }
 #radarN { position: absolute; left: 50%; top: -2px; transform: translateX(-50%); font-size: 13px; background:#000; color:#fff; padding: 0 5px; border-radius: 3px; display: none; }
 #zoneName { left: 28px; bottom: 250px; font-size: 34px; letter-spacing: 2px; color: #f3c35a; opacity: 0; transition: opacity .6s; text-transform: uppercase; font-style: italic; }
+#tracker { left: 28px; bottom: 296px; display: none; max-width: 480px; font-size: 15px; color: #ddd; background: rgba(0,0,0,.5); border-left: 3px solid #f7c948; border-radius: 4px; padding: 5px 12px; }
+#tracker .tag { color: #f7c948; font-size: 13px; letter-spacing: 2px; }
+#tracker .ttl { color: #ffd040; font-size: 19px; font-style: italic; }
+#tracker .d { color: #eee; font-size: 15px; }
 #vehName { right: 28px; bottom: 88px; font-size: 30px; color: #f3c35a; opacity: 0; transition: opacity .6s; font-style: italic; text-transform: uppercase; text-align: right; }
 #speedo { right: 28px; bottom: 28px; font-size: 26px; color: #fff; text-align: right; display: none; }
 #speedo small { font-size: 13px; opacity: .8; }
@@ -113,7 +117,7 @@ table.tbl { border-collapse: collapse; font-size: 16px; } table.tbl td { padding
 
 .cbar { position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 20; transition: height .6s; pointer-events: none; }
 #cineTop { top: 0; } #cineBot { bottom: 0; } .cbar.on { height: 11vh; }
-#hud.cine #radarWrap, #hud.cine #tr, #hud.cine #zoneName, #hud.cine #vehName, #hud.cine #speedo, #hud.cine #notes, #hud.cine #prompt, #hud.cine #objective { display: none !important; }
+#hud.cine #radarWrap, #hud.cine #tracker, #hud.cine #tr, #hud.cine #zoneName, #hud.cine #vehName, #hud.cine #speedo, #hud.cine #notes, #hud.cine #prompt, #hud.cine #objective { display: none !important; }
 #hud.cine #subs { bottom: 13vh; }
 
 #cineBot span { position: absolute; right: 22px; top: 10px; font-family: var(--text); font-size: 14px; color: rgba(255,255,255,.65); letter-spacing: 1px; }

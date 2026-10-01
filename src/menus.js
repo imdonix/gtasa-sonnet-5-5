@@ -164,14 +164,40 @@ export class Menus {
       if (b.label && !legend.has(b.label)) legend.set(b.label, b);
     }
     if (G.waypoint) { const p = this.worldToMap(G.waypoint.x, G.waypoint.z); c.fillStyle = '#ff4fa0'; c.strokeStyle = '#000'; c.lineWidth = 2; c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(p.x - 9, p.y - 22); c.lineTo(p.x + 9, p.y - 22); c.closePath(); c.fill(); c.stroke(); }
+    // next-mission highlight (pulses even while paused, so use wall time)
+    for (const b of G.blips.list) {
+      if (b.hidden || !b.nextQuest) continue;
+      const p = this.worldToMap(b.x, b.z); if (p.x < -20 || p.y < -20 || p.x > S + 20 || p.y > S + 20) continue;
+      const t = performance.now() / 1000, ph = Math.sin(t * 5), pr = 14 + ph * 2.5;
+      c.save(); c.translate(p.x, p.y);
+      c.globalAlpha = 0.55 + 0.45 * ph; c.strokeStyle = '#fff'; c.lineWidth = 3; c.beginPath(); c.arc(0, 0, pr, 0, 6.3); c.stroke();
+      c.globalAlpha = 1; c.strokeStyle = '#f7c948'; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, pr + 4, 0, 6.3); c.stroke();
+      c.restore();
+    }
     // player
     const pl = G.player; const pp = this.worldToMap(pl.vehicle ? pl.vehicle.x : pl.x, pl.vehicle ? pl.vehicle.z : pl.z); const yaw = pl.vehicle ? pl.vehicle.yaw : pl.yaw;
     c.save(); c.translate(pp.x, pp.y); c.rotate(Math.PI - yaw); c.fillStyle = '#000'; c.beginPath(); c.moveTo(0, -14); c.lineTo(11, 11); c.lineTo(0, 6); c.lineTo(-11, 11); c.closePath(); c.fill(); c.fillStyle = '#fff'; c.beginPath(); c.moveTo(0, -11); c.lineTo(8, 8); c.lineTo(0, 4); c.lineTo(-8, 8); c.closePath(); c.fill(); c.restore();
     // side info
     const info = $('mapInfo'); const d = G.map.districtAt(pl.x, pl.z);
-    info.innerHTML = `<div style="margin-bottom:8px">You are in <b style="color:#f3c35a">${d ? d.name : 'the bay'}</b></div>`;
+    let nq = '';
+    if (G.missions) {
+      const act = G.missions.active;
+      const mb = !act ? G.blips.list.find(x => x.nextQuest && !x.hidden) : null;
+      const def = act || mb ? null : G.missions.nextMain();
+      const title = act ? act.title : mb ? mb.label : def ? def.title : '';
+      if (title) {
+        const dd = act ? null : mb ? Math.hypot(mb.x - pl.x, mb.z - pl.z) : null;
+        nq = `<div style="margin-top:6px;color:#f7c948">${act ? 'Current mission' : '★ Next mission'}: <b>${title}</b>${dd != null ? ' — ' + Math.round(dd) + ' m' : ''}</div>`;
+      }
+    }
+    info.innerHTML = `<div style="margin-bottom:8px">You are in <b style="color:#f3c35a">${d ? d.name : 'the bay'}</b></div>${nq}`;
     const lg = $('mapLegend'); lg.innerHTML = '';
-    for (const [label, b] of legend) { const d = document.createElement('div'); d.innerHTML = `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${b.color};border:2px solid #000;margin-right:8px;vertical-align:middle"></span>${label}`; lg.appendChild(d); }
+    for (const [label, b] of [...legend].sort((a, z) => (z[1].nextQuest ? 1 : 0) - (a[1].nextQuest ? 1 : 0))) {
+      const hot = b.nextQuest;
+      const d = document.createElement('div');
+      d.innerHTML = `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${b.color};border:2px solid #000;margin-right:8px;vertical-align:middle"></span>${hot ? `<b style="color:#f7c948">★ MAIN QUEST: ${label}</b>` : label}`;
+      lg.appendChild(d);
+    }
     const gg = [['#3fb45a', 'Emerald Row'], ['#9a4fd0', 'Violet Kings'], ['#e3c63a', 'Los Soles'], ['#3a7be0', 'Blue Line']].map(([c, n]) => `<div><span style="display:inline-block;width:12px;height:12px;background:${c};margin-right:8px;vertical-align:middle;border:2px solid #000"></span>${n} turf</div>`).join('');
     lg.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;color:#888">Gang colours</div>' + gg);
   }

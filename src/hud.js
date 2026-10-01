@@ -22,13 +22,14 @@ export class HUD {
       <div id="stars"></div><div id="weapon"></div><div id="timer"></div><div id="progress"></div><div id="counter"></div>`;
     root.appendChild(tr);
     const rw = el('div', 'radarWrap'); rw.innerHTML = '<canvas id="radar" width="420" height="420"></canvas><div id="radarN">N</div>'; root.appendChild(rw);
+    root.appendChild(el('div', 'tracker', 'shadowed'));
     root.appendChild(el('div', 'zoneName', 'shadowed')); root.appendChild(el('div', 'vehName', 'shadowed')); root.appendChild(el('div', 'speedo', 'shadowed'));
     root.appendChild(el('div', 'notes', 'shadowed')); root.appendChild(el('div', 'subs', 'shadowed')); root.appendChild(el('div', 'objective', 'shadowed')); root.appendChild(el('div', 'prompt'));
     root.appendChild(el('div', 'crosshair', null, '<i></i>')); root.appendChild(el('div', 'scope')); root.appendChild(el('div', 'vignette')); root.appendChild(el('div', 'flash'));
     root.appendChild(el('div', 'big', 'shadowed')); root.appendChild(el('div', 'bigSub', 'shadowed')); root.appendChild(el('div', 'mp', 'shadowed')); root.appendChild(el('div', 'mtitle', 'shadowed'));
     const rp = el('div', 'radioPop', 'shadowed', '<div class="n"></div><div class="t"></div>'); root.appendChild(rp);
     document.body.appendChild(el('div', 'fade'));
-    this.e = {}; for (const id of ['clock', 'money', 'moneyDelta', 'hp', 'ar', 'st', 'stars', 'weapon', 'timer', 'progress', 'counter', 'zoneName', 'vehName', 'speedo', 'notes', 'subs', 'objective', 'prompt', 'crosshair', 'scope', 'vignette', 'flash', 'big', 'bigSub', 'mp', 'mtitle', 'radioPop', 'radar', 'radarN', 'fade']) this.e[id] = $(id);
+    this.e = {}; for (const id of ['clock', 'money', 'moneyDelta', 'hp', 'ar', 'st', 'stars', 'weapon', 'timer', 'progress', 'counter', 'zoneName', 'vehName', 'speedo', 'notes', 'subs', 'objective', 'prompt', 'crosshair', 'scope', 'vignette', 'flash', 'big', 'bigSub', 'mp', 'mtitle', 'radioPop', 'radar', 'radarN', 'tracker', 'fade']) this.e[id] = $(id);
     this.radar = this.e.radar.getContext('2d');
     this.stars = 0; this.moneyShown = 0; this.lastZone = ''; this.zoneT = 0; this.subQueue = []; this.subT = 0; this.objText = '';
     this.moneyDeltaT = 0; this.moneyDeltaSum = 0; this.flashStars = false; this.seen = false; this.vehNameT = 0; this.lastVeh = null;
@@ -149,7 +150,41 @@ export class HUD {
     if (this.radioT > 0) { this.radioT -= dt; if (this.radioT <= 0) this.e.radioPop.style.opacity = 0; }
     this.e.stars.classList.toggle('flash', this.stars > 0 && this.seen && false);
     if (this.stars > 0) { const ss = this.e.stars.children; const blink = !this.seen && G.police.hideT > 0 && Math.floor(G.time * 4) % 2; for (let i = 0; i < 6; i++) ss[i].style.opacity = (i < this.stars && blink) ? 0.3 : 1; }
+    this.updateTracker();
     this.drawRadar(dt);
+  }
+
+  // persistent "next quest" line above the radar: names the mission and the distance to walk/drive
+  updateTracker() {
+    const t = this.e.tracker, M = G.missions;
+    if (!t) return;
+    let tag = '', title = '', dist = null;
+    if (M && G.game.state === 'play' && !G.game.inCutscene) {
+      const pl = G.player, px = pl.vehicle ? pl.vehicle.x : pl.x, pz = pl.vehicle ? pl.vehicle.z : pl.z;
+      if (M.active) {
+        const r = M.active; tag = 'MISSION'; title = r.title;
+        let best = Infinity;
+        for (const m of r.markers) if (!m.dead) best = Math.min(best, Math.hypot(m.x - px, m.z - pz));
+        for (const b of r.blips) if (!b.hidden) best = Math.min(best, Math.hypot(b.x - px, b.z - pz));
+        if (best < Infinity) dist = best;
+      } else {
+        const mb = G.blips.list.find(x => x.nextQuest && !x.hidden);
+        const def = mb ? null : M.nextMain();
+        if (mb) { tag = 'NEXT MISSION'; title = mb.label; dist = Math.hypot(mb.x - px, mb.z - pz); }
+        else if (def) { tag = 'NEXT MISSION'; title = def.title; const e = M.startMarkers.get(def.id); if (e) dist = Math.hypot(e.marker.x - px, e.marker.z - pz); }
+      }
+    }
+    if (!title) { t.style.display = 'none'; this._trkKey = null; return; }
+    const key = tag + '|' + title;
+    if (this._trkKey !== key) {
+      this._trkKey = key;
+      t.innerHTML = '<span class="tag"></span> <span class="ttl"></span> <span class="d"></span>';
+      t.querySelector('.tag').textContent = tag;
+      t.querySelector('.ttl').textContent = title;
+      this._trkD = t.querySelector('.d');
+    }
+    if (this._trkD) this._trkD.textContent = dist == null ? '' : '· ' + (dist >= 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist) + ' m');
+    t.style.display = 'block';
   }
 
   drawRadar(dt) {
@@ -177,19 +212,34 @@ export class HUD {
       const dx = bx - px, dz = bz - pz;
       let sx = (-dx * cs + dz * sn) * ppm, sy = (-dx * sn - dz * cs) * ppm;
       let d = Math.hypot(sx, sy); const lim = R - 16; let edge = false;
-      if (d > lim) { sx *= lim / d; sy *= lim / d; edge = true; }
+      const wantArrow = !!(b.edgeArrow || b.nextQuest);
+      if (d > lim) { edge = true; const k = (wantArrow ? lim - 14 : lim) / d; sx *= k; sy *= k; }
       const x = R + sx, y = R + sy;
       c.save(); c.translate(x, y);
       if (b.flash && Math.floor(G.time * 3) % 2) c.globalAlpha = 0.35;
       const col = b.color || '#fff';
       if (b.icon === 'square') { c.fillStyle = '#000'; c.fillRect(-9, -9, 18, 18); c.fillStyle = col; c.fillRect(-7, -7, 14, 14); }
       else if (b.icon === 'tri') { c.fillStyle = '#000'; c.beginPath(); c.moveTo(0, -11); c.lineTo(10, 8); c.lineTo(-10, 8); c.closePath(); c.fill(); c.fillStyle = col; c.beginPath(); c.moveTo(0, -8); c.lineTo(7, 6); c.lineTo(-7, 6); c.closePath(); c.fill(); }
-      else if (b.icon === 'text') { c.fillStyle = '#000'; c.beginPath(); c.arc(0, 0, 11, 0, 6.3); c.fill(); c.fillStyle = col; c.beginPath(); c.arc(0, 0, 9, 0, 6.3); c.fill(); c.fillStyle = '#000'; c.font = 'bold 13px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(b.text || '', 0, 1); }
+      else if (b.icon === 'text') { const r1 = b.nextQuest ? 12 : 9; c.fillStyle = '#000'; c.beginPath(); c.arc(0, 0, r1 + 2, 0, 6.3); c.fill(); c.fillStyle = col; c.beginPath(); c.arc(0, 0, r1, 0, 6.3); c.fill(); c.fillStyle = '#000'; c.font = 'bold ' + (b.nextQuest ? 15 : 13) + 'px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(b.text || '', 0, 1); }
       else { c.fillStyle = '#000'; c.beginPath(); c.arc(0, 0, 8, 0, 6.3); c.fill(); c.fillStyle = col; c.beginPath(); c.arc(0, 0, 6, 0, 6.3); c.fill(); }
+      if (b.nextQuest) { // pulsing ring so the main quest blip stands out from shops/activities
+        const ph = Math.sin(G.time * 5);
+        c.globalAlpha = 0.5 + 0.5 * ph;
+        c.strokeStyle = '#fff'; c.lineWidth = 2.5; c.beginPath(); c.arc(0, 0, (b.icon === 'text' ? 16 : 11) + ph * 2, 0, 6.3); c.stroke();
+        c.globalAlpha = 1;
+      }
       c.restore();
+      if (edge && wantArrow) { // off-radar direction arrow on the rim
+        const a = Math.atan2(sy, sx);
+        c.save(); c.translate(R + Math.cos(a) * (R - 15), R + Math.sin(a) * (R - 15)); c.rotate(a + Math.PI / 2);
+        c.fillStyle = '#000'; c.beginPath(); c.moveTo(0, -10); c.lineTo(8, 7); c.lineTo(-8, 7); c.closePath(); c.fill();
+        c.fillStyle = col; c.beginPath(); c.moveTo(0, -7); c.lineTo(5.5, 5); c.lineTo(-5.5, 5); c.closePath(); c.fill();
+        c.restore();
+      }
     };
-    for (const b of G.blips.list) { if (b.hidden) continue; drawBlip(b, b.x, b.z); }
-    if (G.waypoint) drawBlip({ color: '#ff4fa0', icon: 'tri' }, G.waypoint.x, G.waypoint.z);
+    for (const b of G.blips.list) { if (b.hidden || b.nextQuest) continue; drawBlip(b, b.x, b.z); }
+    for (const b of G.blips.list) { if (b.hidden || !b.nextQuest) continue; drawBlip(b, b.x, b.z); }
+    if (G.waypoint) drawBlip({ color: '#ff4fa0', icon: 'tri', edgeArrow: true }, G.waypoint.x, G.waypoint.z);
     // player arrow (center)
     c.save(); c.translate(R, R); c.rotate(-((v ? v.yaw : p.yaw) - yaw)); c.fillStyle = '#000'; c.beginPath(); c.moveTo(0, -13); c.lineTo(10, 11); c.lineTo(0, 6); c.lineTo(-10, 11); c.closePath(); c.fill();
     c.fillStyle = '#fff'; c.beginPath(); c.moveTo(0, -10); c.lineTo(7, 8); c.lineTo(0, 4); c.lineTo(-7, 8); c.closePath(); c.fill(); c.restore();
