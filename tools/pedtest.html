@@ -1,0 +1,167 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Ped test</title>
+<style>
+  html,body{margin:0;background:#222;overflow:hidden;font:12px monospace;color:#eee}
+  #ui{position:fixed;left:4px;top:4px;max-width:340px;z-index:5;background:rgba(0,0,0,.55);padding:4px;border-radius:4px}
+  #ui button{font:11px monospace;margin:1px;padding:1px 4px;cursor:pointer}
+  #ui button.on{background:#ffd54a}
+  .lbl{position:fixed;transform:translate(-50%,0);font:10px monospace;color:#fff;text-shadow:0 0 2px #000,0 0 2px #000;pointer-events:none;white-space:nowrap}
+  #info{position:fixed;right:6px;bottom:4px;text-shadow:0 0 3px #000}
+</style></head><body>
+<div id="ui"></div><div id="info"></div>
+<script type="importmap">{"imports":{"three":"../lib/three.module.js","three/addons/":"../lib/addons/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { PedRig, randomAppearance, PED_STATES, PED_ACTIONS, SEAT_HIP_HEIGHT } from '../src/models_peds.js';
+import { WEAPON_DEFS, createWeaponModel } from '../src/models_weapons.js';
+
+const Q = new URLSearchParams(location.search);
+const q = (k, d) => Q.has(k) ? Q.get(k) : d;
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8fb4d8); scene.fog = new THREE.Fog(0x8fb4d8, 40, 120);
+scene.add(new THREE.HemisphereLight(0xdfeaff, 0x70664a, 1.7));
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.2); sun.position.set(-4, 8, 6); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshLambertMaterial({ color: 0x6d7468 })); ground.rotation.x = -Math.PI / 2; scene.add(ground);
+const grid = new THREE.GridHelper(100, 100, 0x555555, 0x5d6458); grid.position.y = 0.002; scene.add(grid);
+const cam = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 300);
+
+// ----------------------------------------------------------------- roster
+const SPECS = [
+  ['civ m', { role: 'civ', gender: 'm' }, 11], ['civ m', { role: 'civ', gender: 'm' }, 12], ['civ m', { role: 'civ', gender: 'm' }, 13],
+  ['civ f', { role: 'civ', gender: 'f' }, 21], ['civ f', { role: 'civ', gender: 'f' }, 22], ['civ f', { role: 'civ', gender: 'f' }, 23], ['civ f', { role: 'civ', gender: 'f' }, 24],
+  ['gang1 green', { role: 'gangster', gang: 1, gender: 'm' }, 31], ['gang1 green', { role: 'gangster', gang: 1, gender: 'm' }, 32],
+  ['gang2 purple', { role: 'gangster', gang: 2, gender: 'm' }, 33], ['gang2 purple', { role: 'gangster', gang: 2, gender: 'm' }, 34],
+  ['gang3 yellow', { role: 'gangster', gang: 3, gender: 'm' }, 35], ['gang3 yellow', { role: 'gangster', gang: 3, gender: 'm' }, 36],
+  ['gang4 blue', { role: 'gangster', gang: 4, gender: 'm' }, 37], ['gang4 blue', { role: 'gangster', gang: 4, gender: 'f' }, 38],
+  ['cop', { role: 'cop', gender: 'm' }, 41], ['cop f', { role: 'cop', gender: 'f' }, 42], ['swat', { role: 'swat' }, 43],
+  ['medic', { role: 'medic', gender: 'm' }, 44], ['fireman', { role: 'fireman', gender: 'm' }, 45],
+  ['biker', { role: 'biker', gender: 'm' }, 46], ['biker f', { role: 'biker', gender: 'f' }, 47],
+  ['tourist', { role: 'tourist', gender: 'm' }, 48], ['tourist f', { role: 'tourist', gender: 'f' }, 49],
+  ['worker', { role: 'worker', gender: 'm' }, 50], ['homeless', { role: 'homeless' }, 51],
+  ['business m', { role: 'business', gender: 'm' }, 52], ['business f', { role: 'business', gender: 'f' }, 53], ['hooker', { role: 'hooker' }, 54], ['civ m', { role: 'civ', gender: 'm' }, 55],
+];
+const WEAPONS = Object.keys(WEAPON_DEFS).filter(k => k !== 'fist');
+const CAMS = ['front', '34', 'side', 'back', 'top'];
+
+let rigs = [], labels = [], cfg = {};
+const ids = q('solo', null) !== null ? q('solo').split(',').map(Number) : q('ids', null) ? q('ids').split(',').map(Number) : null;
+
+function camAng() { return { front: 0, '34': 0.75, side: Math.PI / 2, back: Math.PI, top: 0 }[q('cam', 'front')]; }
+function build() {
+  for (const r of rigs) r.dispose(); rigs = [];
+  for (const l of labels) l.remove(); labels = [];
+  const list = ids || SPECS.map((_, i) => i);
+  const n = list.length, cols = ids ? Math.min(n, 8) : Math.min(n, Math.ceil(Math.sqrt(n * 2.2))), sp = +q('sp', 1.45);
+  list.forEach((si, i) => {
+    const [label, opts, seed] = SPECS[si];
+    const rig = new PedRig(randomAppearance(mulberry(seed * 7919 + (+q('seed', 0))), opts));
+    const cx = i % cols, cz = Math.floor(i / cols), rows = Math.ceil(n / cols);
+    { const lx = (cx - (cols - 1) / 2) * sp, lz = (cz - (rows - 1) / 2) * sp * 1.15, a = camAng(); rig.group.position.set(lx * Math.cos(a) + lz * Math.sin(a), 0, -lx * Math.sin(a) + lz * Math.cos(a)); }
+    scene.add(rig.group); rig.label = label + ' #' + si; rigs.push(rig);
+    const d = document.createElement('div'); d.className = 'lbl'; d.textContent = rig.label; document.body.appendChild(d); labels.push(d);
+  });
+  fitCamera();
+}
+function fitCamera() {
+  const v = q('cam', 'front'), box = new THREE.Box3();
+  for (const r of rigs) box.expandByPoint(r.group.position);
+  const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  const span = Math.max(size.x, size.z) + 1.6, zoomQ = q('zoom', null);
+  const fov = cam.fov * Math.PI / 180, aspect = innerWidth / innerHeight;
+  let dist = Math.max(span / (2 * Math.tan(fov / 2) * aspect) * 0.92, 3.0) + size.z * 0.5;
+  let ty = 0.9;
+  if (rigs.length === 1 || ids) { dist = Math.max(dist, 3.1); }
+  if (zoomQ === 'face') { dist = Math.max(1.1, span * 0.36); ty = 1.66; } else if (zoomQ === 'torso') { dist = 1.8; ty = 1.25; } else if (zoomQ) dist *= +zoomQ;
+  if (rigs.length > 8) { ty = 0.95; dist *= 0.8; }
+  if (q('dist', null)) dist = +q('dist'); if (q('ty', null)) ty = +q('ty');
+  const ang = { front: 0, '34': 0.75, side: Math.PI / 2, back: Math.PI, top: 0 }[v];
+  const tgt = new THREE.Vector3(c.x, ty, c.z);
+  if (v === 'top') { cam.position.set(c.x, dist * 1.5, c.z + 0.01); cam.up.set(0, 0, -1); } else cam.up.set(0, 1, 0);
+  if (v === 'top') { }
+  if (v !== 'top') cam.position.set(c.x + Math.sin(ang) * dist, ty + (rigs.length > 8 ? dist * 0.3 : 0.25), c.z + Math.cos(ang) * dist);
+  cam.lookAt(tgt);
+  cam.updateMatrixWorld();
+}
+
+// ----------------------------------------------------------------- simulation helpers
+function applyCfg() {
+  rigs.forEach((r, i) => {
+    let w = cfg.weapon;
+    if (w === 'all') w = WEAPONS[i % WEAPONS.length];
+    r.setWeapon(w && w !== 'none' ? w : null);
+    r.setState(cfg.state);
+    r.setDanceMove(cfg.dance | 0);
+    if (cfg.state === 'dead') r.setDeadPose(cfg.dead, cfg.face || (i % 2 ? 'front' : 'back'));
+  });
+}
+function params(r, i) { return { speed: cfg.speed, aiming: cfg.aim, aimPitch: cfg.pitch, steer: cfg.steer, lean: 0 }; }
+function step(dt) { rigs.forEach((r, i) => r.update(dt, params(r, i))); }
+function render() {
+  renderer.render(scene, cam);
+  const v = new THREE.Vector3();
+  rigs.forEach((r, i) => {
+    v.copy(r.group.position); v.y = 0; v.project(cam);
+    const l = labels[i]; l.style.left = ((v.x + 1) / 2 * innerWidth) + 'px'; l.style.top = ((1 - v.y) / 2 * innerHeight + 2) + 'px';
+    l.style.display = q('labels', '1') === '0' || rigs.length === 1 ? 'none' : '';
+  });
+  document.getElementById('info').textContent = `${cfg.state}${cfg.aim ? '+aim' : ''} w:${cfg.weapon || '-'} act:${cfg.action || '-'} t=${(simT).toFixed(2)}`;
+}
+let simT = 0, auto = false;
+// run(): reset everything, simulate `t` seconds (fixed step), optionally triggering an action at time `at`, then render
+function run(o = {}) {
+  cfg = Object.assign({ state: 'idle', weapon: null, aim: false, pitch: 0, steer: 0, speed: undefined, dead: 1, dance: 0, action: null, at: 0.0, actionT: 0.0, t: 1.0 }, cfg, o);
+  build(); applyCfg(); simT = 0;
+  const dt = 1 / 30; let acted = false, total = cfg.t + (cfg.action ? cfg.actionT : 0);
+  // warm up for cfg.t seconds; then if an action is set, fire it and advance actionT seconds
+  for (let t = 0; t < cfg.t; t += dt) { step(dt); simT += dt; }
+  if (cfg.action) { rigs.forEach(r => r.playAction(cfg.action)); for (let t = 0; t < cfg.actionT; t += dt) { step(dt); simT += dt; } }
+  render(); return rigs.length;
+}
+window.run = run; window.rigs = () => rigs; window.renderOnce = render;
+
+// ----------------------------------------------------------------- UI
+const ui = document.getElementById('ui');
+if (q('ui', '1') === '0') ui.style.display = 'none';
+function btnRow(title, items, onclick, key) {
+  const d = document.createElement('div'); d.innerHTML = `<b>${title}</b> `;
+  for (const it of items) { const b = document.createElement('button'); b.textContent = it; b.dataset.k = key; b.dataset.v = it; b.onclick = () => { onclick(it); mark(); }; d.appendChild(b); }
+  ui.appendChild(d);
+}
+function mark() { ui.querySelectorAll('button').forEach(b => { const k = b.dataset.k; b.classList.toggle('on', (k === 'state' && cfg.state === b.dataset.v) || (k === 'weapon' && (cfg.weapon || 'none') === b.dataset.v) || (k === 'cam' && q('cam', 'front') === b.dataset.v)); }); }
+btnRow('state', PED_STATES, s => { cfg.state = s; applyCfg(); auto = false; }, 'state');
+btnRow('action', Object.keys(PED_ACTIONS), a => { rigs.forEach(r => r.playAction(a)); }, 'action');
+btnRow('weapon', ['none', 'all', ...WEAPONS], w => { cfg.weapon = w === 'none' ? null : w; applyCfg(); }, 'weapon');
+btnRow('aim', ['on', 'off'], v => { cfg.aim = v === 'on'; });
+btnRow('cam', CAMS, v => { Q.set('cam', v); build(); applyCfg(); }, 'cam');
+btnRow('auto', ['cycle'], () => { auto = !auto; });
+
+// initial
+const st0 = q('state', 'idle');
+cfg = { state: st0, weapon: q('weapon', null), aim: q('aim', '0') === '1', pitch: +q('pitch', 0), steer: +q('steer', 0), speed: Q.has('speed') ? +q('speed') : undefined,
+  dead: +q('dead', 1), face: q('face', null), dance: +q('dance', 0), action: q('action', null), at: 0, actionT: +q('actionT', 0.0), t: +q('t', 1.0) };
+run();
+mark();
+if (q('auto', '0') === '1') auto = true;
+// live loop (only when not frozen)
+let last = performance.now(), cyc = 0, cycT = 0;
+const cycleStates = ['idle', 'walk', 'run', 'sprint', 'crouch', 'jump', 'fall', 'swim', 'drive', 'passenger', 'dead', 'cower', 'phone', 'sit', 'bikeride', 'aim', 'dance'];
+const cycleActs = Object.keys(PED_ACTIONS);
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (q('live', '1') === '0' && !auto) return;
+  if (auto) {
+    cycT += dt;
+    if (cycT > 3) { cycT = 0; cyc++; cfg.state = cycleStates[cyc % cycleStates.length]; if (cfg.state === 'dead') cfg.dead = 0; applyCfg(); if (cyc % 3 === 0) rigs.forEach(r => r.playAction(cycleActs[(cyc / 3 | 0) % cycleActs.length])); }
+    if (cfg.state === 'dead') { cfg.dead = Math.min(1, cfg.dead + dt * 0.6); rigs.forEach((r, i) => r.setDeadPose(cfg.dead, i % 2 ? 'front' : 'back')); }
+  }
+  step(dt); simT += dt; render();
+}
+if (q('live', '1') !== '0' || auto) requestAnimationFrame(loop);
+else document.addEventListener('click', () => { }, { once: true });
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); fitCamera(); render(); });
+</script></body></html>

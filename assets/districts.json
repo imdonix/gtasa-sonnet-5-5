@@ -1,0 +1,356 @@
+{
+ "districts": [
+  {
+   "id": 1,
+   "name": "Richman",
+   "zone": 7,
+   "gang": 0,
+   "cx": 233,
+   "cy": 131,
+   "note": "hillside estates, golf club to the south-west"
+  },
+  {
+   "id": 2,
+   "name": "Mulholland",
+   "zone": 12,
+   "gang": 0,
+   "cx": 452,
+   "cy": 86,
+   "note": "ridge road, scrub hills, a few villas along the road"
+  },
+  {
+   "id": 3,
+   "name": "Vinewood Hills",
+   "zone": 7,
+   "gang": 0,
+   "cx": 646,
+   "cy": 132,
+   "note": "villas on terraces"
+  },
+  {
+   "id": 4,
+   "name": "Vinewood",
+   "zone": 3,
+   "gang": 0,
+   "cx": 449,
+   "cy": 290,
+   "note": "shops and studios mixed with mid-rise apartments"
+  },
+  {
+   "id": 5,
+   "name": "Temple",
+   "zone": 2,
+   "gang": 0,
+   "cx": 628,
+   "cy": 314,
+   "note": "apartments next to the river"
+  },
+  {
+   "id": 6,
+   "name": "Rodeo",
+   "zone": 3,
+   "gang": 0,
+   "cx": 290,
+   "cy": 392,
+   "note": "boutiques, some mansions; diagonal boulevard"
+  },
+  {
+   "id": 7,
+   "name": "Market",
+   "zone": 3,
+   "gang": 0,
+   "cx": 390,
+   "cy": 488,
+   "note": "commercial with warehouse blocks"
+  },
+  {
+   "id": 8,
+   "name": "Commerce",
+   "zone": 4,
+   "gang": 0,
+   "cx": 506,
+   "cy": 420,
+   "note": "downtown core"
+  },
+  {
+   "id": 9,
+   "name": "Pershing Square",
+   "zone": 4,
+   "gang": 0,
+   "cx": 508,
+   "cy": 509,
+   "note": "downtown core"
+  },
+  {
+   "id": 10,
+   "name": "Downtown Financial",
+   "zone": 4,
+   "gang": 0,
+   "cx": 608,
+   "cy": 459,
+   "note": "skyscrapers"
+  },
+  {
+   "id": 11,
+   "name": "Conference Center",
+   "zone": 3,
+   "gang": 0,
+   "cx": 506,
+   "cy": 600,
+   "note": "convention and offices"
+  },
+  {
+   "id": 12,
+   "name": "Little Mexico",
+   "zone": 2,
+   "gang": 0,
+   "cx": 609,
+   "cy": 595,
+   "note": "dense apartments"
+  },
+  {
+   "id": 13,
+   "name": "Verona Beach",
+   "zone": 6,
+   "gang": 0,
+   "cx": 240,
+   "cy": 527,
+   "note": "beach strip, boardwalk"
+  },
+  {
+   "id": 14,
+   "name": "Santa Maria Beach",
+   "zone": 6,
+   "gang": 0,
+   "cx": 291,
+   "cy": 657,
+   "note": "beach, pier at the shore"
+  },
+  {
+   "id": 15,
+   "name": "Verdant Bluffs",
+   "zone": 2,
+   "gang": 0,
+   "cx": 356,
+   "cy": 608,
+   "note": "low bluff above the beaches"
+  },
+  {
+   "id": 16,
+   "name": "Jefferson",
+   "zone": 1,
+   "gang": 2,
+   "cx": 760,
+   "cy": 444,
+   "note": "Violet Kings"
+  },
+  {
+   "id": 17,
+   "name": "Glen Park",
+   "zone": 1,
+   "gang": 2,
+   "cx": 697,
+   "cy": 521,
+   "note": "park strip along the river, Violet Kings"
+  },
+  {
+   "id": 18,
+   "name": "Idlewood",
+   "zone": 1,
+   "gang": 2,
+   "cx": 694,
+   "cy": 636,
+   "note": "Violet Kings"
+  },
+  {
+   "id": 19,
+   "name": "Ganton",
+   "zone": 1,
+   "gang": 1,
+   "cx": 792,
+   "cy": 615,
+   "note": "Emerald Row home turf - Grove Street cul-de-sac"
+  },
+  {
+   "id": 20,
+   "name": "El Corona",
+   "zone": 1,
+   "gang": 3,
+   "cx": 701,
+   "cy": 736,
+   "note": "Los Soles"
+  },
+  {
+   "id": 21,
+   "name": "Willowfield",
+   "zone": 5,
+   "gang": 3,
+   "cx": 826,
+   "cy": 753,
+   "note": "industrial + housing, Los Soles"
+  },
+  {
+   "id": 22,
+   "name": "Playa del Seville",
+   "zone": 1,
+   "gang": 0,
+   "cx": 958,
+   "cy": 731,
+   "note": ""
+  },
+  {
+   "id": 23,
+   "name": "East Beach",
+   "zone": 2,
+   "gang": 0,
+   "cx": 974,
+   "cy": 584,
+   "note": ""
+  },
+  {
+   "id": 24,
+   "name": "Las Colinas",
+   "zone": 7,
+   "gang": 0,
+   "cx": 879,
+   "cy": 321,
+   "note": "low rolling hills, villas"
+  },
+  {
+   "id": 25,
+   "name": "East Los Santos",
+   "zone": 1,
+   "gang": 4,
+   "cx": 964,
+   "cy": 463,
+   "note": "Blue Line"
+  },
+  {
+   "id": 26,
+   "name": "Los Flores",
+   "zone": 1,
+   "gang": 4,
+   "cx": 859,
+   "cy": 517,
+   "note": "Blue Line"
+  },
+  {
+   "id": 27,
+   "name": "Los Santos Stadium",
+   "zone": 11,
+   "gang": 0,
+   "cx": 905,
+   "cy": 627,
+   "note": "oval ring road, flat concrete lot"
+  },
+  {
+   "id": 28,
+   "name": "Ocean Flats",
+   "zone": 5,
+   "gang": 0,
+   "cx": 570,
+   "cy": 776,
+   "note": "industrial"
+  },
+  {
+   "id": 29,
+   "name": "Ocean Docks",
+   "zone": 10,
+   "gang": 0,
+   "cx": 935,
+   "cy": 897,
+   "note": "harbour inlet, container yards"
+  },
+  {
+   "id": 30,
+   "name": "Los Santos Airport",
+   "zone": 9,
+   "gang": 0,
+   "cx": 714,
+   "cy": 905,
+   "note": "LS International: runway y~898, x 590..830"
+  },
+  {
+   "id": 31,
+   "name": "Las Brisas",
+   "zone": 1,
+   "gang": 0,
+   "cx": 433,
+   "cy": 708,
+   "note": ""
+  },
+  {
+   "id": 32,
+   "name": "East Hills",
+   "zone": 12,
+   "gang": 0,
+   "cx": 883,
+   "cy": 112,
+   "note": "scrub hills, map border"
+  },
+  {
+   "id": 33,
+   "name": "Del Perro",
+   "zone": 2,
+   "gang": 0,
+   "cx": 181,
+   "cy": 346,
+   "note": ""
+  },
+  {
+   "id": 34,
+   "name": "Forest Lawn Cemetery",
+   "zone": 13,
+   "gang": 0,
+   "cx": 740,
+   "cy": 270,
+   "note": "cemetery east of Temple"
+  },
+  {
+   "id": 35,
+   "name": "Richman Golf Club",
+   "zone": 8,
+   "gang": 0,
+   "cx": 205,
+   "cy": 255,
+   "note": "golf course in the hills"
+  }
+ ],
+ "landmarks": {
+  "ganton_grove_street": {
+   "cul_de_sac_end_px": [
+    790,
+    594
+   ]
+  },
+  "vinewood_sign_px": [
+   430,
+   150
+  ],
+  "santa_maria_pier_px": [
+   283,
+   678
+  ],
+  "airport_runway": {
+   "y": 898,
+   "x0": 590,
+   "x1": 830
+  },
+  "stadium_ring_centre_px": [
+   905,
+   625
+  ],
+  "cemetery_rect": [
+   690,
+   254,
+   790,
+   286
+  ],
+  "golf_course": [
+   205,
+   255,
+   47,
+   27
+  ]
+ }
+}

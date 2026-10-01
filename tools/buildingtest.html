@@ -1,0 +1,127 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Building showcase</title>
+<style>html,body{margin:0;background:#223;overflow:hidden;font:12px monospace;color:#fff}
+#info{position:fixed;left:6px;top:4px;text-shadow:0 0 3px #000;pointer-events:none;white-space:pre}
+#ui{position:fixed;right:6px;top:4px}
+button{font:12px monospace}</style></head>
+<body>
+<div id="info"></div>
+<div id="ui"><button id="nb">night</button></div>
+<script type="importmap">{"imports":{"three":"../lib/three.module.js","three/addons/":"../lib/addons/"}}</script>
+<script type="module">
+/* Showcase street for src/buildings.js.
+ * URL params:
+ *   night=0..1       night factor            rows=0,1,..   which rows (default all)
+ *   focus=type[,n]   aim camera at n-th building of that type (default 0)
+ *   dist= ang= fh= look=   camera distance (m), azimuth (deg from the front, +=to viewer's left), eye height, look-at height
+ *   cam=x,y,z  lookat=x,y,z  explicit camera;   fov=      w= h= (size override for focus building)
+ *   atlas=1|2        dump the colour (1) / emissive (2) atlas instead of the 3D scene
+ *   seed=n           seed offset      shadow=1  enable sun shadows
+ */
+import * as THREE from 'three';
+import { generateBuilding, createBuildingMaterial, bakeTransform, BUILDING_INFO, BUILDING_TYPES, getFacadeAtlas } from '../src/buildings.js';
+
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? parseFloat(q.get(k)) : d);
+const W = innerWidth, H = innerHeight;
+
+if (q.has('atlas')) {
+  const t0 = performance.now();
+  const a = getFacadeAtlas();
+  const c = q.get('atlas') === '2' ? a.emissive : a.color;
+  document.body.style.background = '#8a8';
+  c.style.cssText = 'position:fixed;left:0;top:0;width:' + (q.get('atlas') === '2' ? '100vw' : '100vw') + ';height:auto;image-rendering:auto';
+  if (q.has('crop')) { const [cx, cy, cw, ch] = q.get('crop').split(',').map(Number); const k = innerWidth / cw; c.style.cssText = `position:fixed;left:${-cx * k}px;top:${-cy * k}px;width:${c.width * k * (q.get('atlas') === '2' ? 2 : 1)}px;image-rendering:auto`; }
+  document.body.appendChild(c);
+  console.log('atlas built in', (performance.now() - t0).toFixed(0), 'ms', c.width, c.height, 'tiles', Object.keys(a.tiles).length);
+} else {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1); renderer.setSize(W, H); document.body.appendChild(renderer.domElement);
+  if (q.has('shadow')) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
+  const scene = new THREE.Scene();
+  const night = num('night', 0);
+  const dayBg = new THREE.Color(0x9cc4e8), nightBg = new THREE.Color(0x0c1226);
+  const bg = dayBg.clone().lerp(nightBg, night); scene.background = bg; scene.fog = new THREE.Fog(bg, 250, 900);
+  const hemi = new THREE.HemisphereLight(0xcfe2ff, 0x8a7a60, 1.25 * (1 - night) + 0.35 * night);
+  const sun = new THREE.DirectionalLight(0xfff0d8, 2.0 * (1 - night) + 0.25 * night); sun.position.set(-90, 120, 70);
+  if (q.has('shadow')) { sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); const s = 220; Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 10, far: 500 }); sun.shadow.bias = -0.0005; sun.target.position.set(60, 0, -40); scene.add(sun.target); }
+  scene.add(hemi, sun);
+  const cam = new THREE.PerspectiveCamera(num('fov', 60), W / H, 0.3, 1800);
+
+  const mat = createBuildingMaterial(); mat.setNight(night);
+  const gmat = new THREE.MeshLambertMaterial({ color: 0x6f8a58 }), rmat = new THREE.MeshLambertMaterial({ color: 0x3c3c40 }), swmat = new THREE.MeshLambertMaterial({ color: 0xa8a49a }), lmat = new THREE.MeshBasicMaterial({ color: 0xe8d070 });
+
+  // ---------- layout ----------
+  const ROWS = [
+    [['house_small', 6], ['house_ranch', 2], ['house_two_story', 3], ['duplex', 2]],
+    [['apartment_low', 3], ['apartment_mid', 2], ['liquor_store', 2], ['shop_strip', 2], ['motel', 1], ['gas_station', 1], ['fast_food', 2]],
+    [['church', 1], ['school', 1], ['hospital', 1], ['police_station', 1], ['city_hall', 1], ['bank', 1]],
+    [['warehouse', 2], ['warehouse_small', 2], ['factory', 1], ['garage_shop', 2], ['gym', 1], ['nightclub', 1], ['parking_garage', 1], ['hangar', 1]],
+    [['skyscraper', 5], ['office_mid', 3], ['office_low', 2]],
+    [['villa', 2], ['mansion', 1], ['beach_house', 3]],
+    [['terminal', 1], ['stadium', 1]],
+  ];
+  const rowsSel = q.has('rows') ? q.get('rows').split(',').map(Number) : ROWS.map((_, i) => i);
+  const seedOff = num('seed', 0);
+  const placed = {}; const tri = {}; let zCursor = 0; let totalTris = 0;
+  const t0 = performance.now();
+  const geoms = [];
+  for (const ri of rowsSel) {
+    const row = ROWS[ri]; let x = 0; let maxD = 0; const items = [];
+    let n = 0;
+    for (const [type, cnt] of row) for (let k = 0; k < cnt; k++) {
+      const info = BUILDING_INFO[type]; let seed = 100 + n * 7 + k * 3 + seedOff; n++;
+      let r = (seed * 9301 + 49297) % 233280 / 233280;
+      const R = (a) => (Math.sin(seed * 12.9898 + a * 78.233) * 43758.5453) % 1; const rr = (a) => Math.abs(R(a));
+      let w = info.minW + (info.maxW - info.minW) * rr(1), d = info.minD + (info.maxD - info.minD) * rr(2), h = info.minH + (info.maxH - info.minH) * rr(3);
+      if (q.has('focus') && q.get('focus').split(',')[0] === type) { if (q.has('w')) w = num('w', w); if (q.has('h')) h = num('h', h); if (q.has('d')) d = num('d', d); }
+      items.push({ type, seed, w, d, h, k });
+      maxD = Math.max(maxD, d);
+    }
+    const front = zCursor;
+    for (const it of items) {
+      const g = generateBuilding({ type: it.type, w: it.w, d: it.d, h: it.h, seed: it.seed, style: q.get('style') || undefined, crown: q.get('crown') || undefined });
+      const cx = x + it.w / 2, cz = front - it.d / 2 - 4;
+      const baked = bakeTransform(g, cx, 0, cz, 0);
+      const m = new THREE.Mesh(baked, mat.material); m.frustumCulled = true;
+      if (q.has('shadow')) { m.castShadow = true; m.receiveShadow = true; }
+      scene.add(m);
+      (placed[it.type] = placed[it.type] || []).push({ x: cx, z: cz, d: it.d, w: it.w, h: g.userData.bounds.h, front: front - 4, tris: g.userData.tris, bounds: g.userData.bounds });
+      tri[it.type] = tri[it.type] || []; tri[it.type].push(g.userData.tris); totalTris += g.userData.tris;
+      x += it.w + 7;
+    }
+    // street in front of this row
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(x + 100, 13), rmat); road.rotation.x = -Math.PI / 2; road.position.set(x / 2, 0.02, front + 6.5 + 2.5); scene.add(road);
+    const walk = new THREE.Mesh(new THREE.PlaneGeometry(x + 100, 4.0), swmat); walk.rotation.x = -Math.PI / 2; walk.position.set(x / 2, 0.03, front - 2.0 + 0.0); if (q.has('shadow')) walk.receiveShadow = true; scene.add(walk);
+    for (let lx = -40; lx < x + 40; lx += 10) { const l = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.25), lmat); l.rotation.x = -Math.PI / 2; l.position.set(lx, 0.04, front + 9); scene.add(l); }
+    zCursor -= maxD + 40;
+  }
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), gmat); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.0; if (q.has('shadow')) ground.receiveShadow = true; scene.add(ground);
+  ground.position.y = -0.005;
+  console.log('generated in', (performance.now() - t0).toFixed(0), 'ms; total tris', totalTris);
+  const summary = Object.entries(tri).map(([t, a]) => t + ':' + a.join('/')).join('  ');
+  console.log('TRIS ' + summary);
+
+  // ---------- camera ----------
+  function aim() {
+    if (q.has('cam')) { const c = q.get('cam').split(',').map(Number); cam.position.set(...c); const l = (q.get('lookat') || '0,0,0').split(',').map(Number); cam.lookAt(...l); return; }
+    let first = Object.values(placed)[0]; let key = Object.keys(placed)[0]; let idx = 0;
+    if (q.has('focus')) { const [t, n] = q.get('focus').split(','); key = t; idx = parseInt(n || '0'); first = placed[t]; }
+    if (!first) return;
+    const p = first[Math.min(idx, first.length - 1)];
+    const dist = num('dist', Math.max(18, Math.max(p.w, p.h * 0.9) * 1.25)), ang = THREE.MathUtils.degToRad(num('ang', 0)), fh = num('fh', 3.0), lh = num('look', Math.min(p.h * 0.4, 6));
+    const tx = p.x, tz = p.front - 1;
+    cam.position.set(tx + Math.sin(ang) * dist, fh, tz + Math.cos(ang) * dist);
+    cam.lookAt(tx, lh, p.z + p.d * 0.35);
+    console.log('focus', key, idx, JSON.stringify(p.bounds), 'tris', p.tris);
+  }
+  aim();
+  const nb = document.getElementById('nb'); let nState = night;
+  nb.onclick = () => { nState = nState > 0.5 ? 0 : 1; mat.setNight(nState); const b = dayBg.clone().lerp(nightBg, nState); scene.background = b; scene.fog.color.copy(b); hemi.intensity = nState ? 0.35 : 1.25; sun.intensity = nState ? 0.25 : 2.0; renderer.render(scene, cam); };
+  window.__render = () => renderer.render(scene, cam);
+  window.__cam = cam; window.__THREE = THREE; window.__placed = placed;
+  renderer.render(scene, cam);
+  document.getElementById('info').textContent = `night=${night}  total tris ${totalTris}`;
+  console.log('rendered OK');
+}
+</script></body></html>

@@ -1,0 +1,107 @@
+<!doctype html><meta charset=utf-8><title>Vehicle test</title>
+<body style="margin:0;background:#222;overflow:hidden;font:12px monospace;color:#fff">
+<script type="importmap">{"imports":{"three":"../lib/three.module.js","three/addons/":"../lib/addons/"}}</script>
+<div id=info style="position:absolute;left:8px;top:6px;text-shadow:0 0 3px #000;pointer-events:none"></div>
+<script type="module">
+import * as THREE from 'three';
+import { createVehicleModel, VEHICLE_DEFS, VEHICLE_TYPES, vehicleTriangleCount } from '../src/models_vehicles.js';
+const q = new URLSearchParams(location.search);
+const types = (q.get('type') || 'all') === 'all' ? VEHICLE_TYPES : q.get('type').split(',');
+const view = q.get('view') || 'lineup';     // lineup | q (3/4 front) | side | rear | top | qr (3/4 rear) | front
+const flag = k => q.get(k) === '1';
+const r = new THREE.WebGLRenderer({ antialias: true });
+r.setPixelRatio(1); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;
+const scene = new THREE.Scene();
+// sky
+const sky = document.createElement('canvas'); sky.width = 4; sky.height = 256; const sg = sky.getContext('2d');
+const gr = sg.createLinearGradient(0, 0, 0, 256);
+if (flag('night')) { gr.addColorStop(0, '#05081a'); gr.addColorStop(1, '#223050'); } else { gr.addColorStop(0, '#3f7fd0'); gr.addColorStop(0.6, '#9cc8ee'); gr.addColorStop(1, '#f4e6cc'); }
+sg.fillStyle = gr; sg.fillRect(0, 0, 4, 256);
+const skyTex = new THREE.CanvasTexture(sky); skyTex.colorSpace = THREE.SRGBColorSpace; scene.background = skyTex;
+scene.fog = new THREE.Fog(flag('night') ? 0x223050 : 0xcfe0ee, 60, 260);
+const night = flag('night');
+scene.add(new THREE.HemisphereLight(night ? 0x6070a0 : 0xbfd8ff, night ? 0x202028 : 0x5a5348, night ? 0.6 : 1.45));
+const sun = new THREE.DirectionalLight(night ? 0x8090c0 : 0xfff0d8, night ? 0.5 : 2.4); sun.position.set(22, 32, 26); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera; sc.left = -40; sc.right = 40; sc.top = 30; sc.bottom = -30; sc.near = 1; sc.far = 120; sun.shadow.bias = -0.0005;
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ color: 0x70757a }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+// parking lines
+const lines = new THREE.Mesh(new THREE.PlaneGeometry(400, 0.12), new THREE.MeshBasicMaterial({ color: 0xdddddd })); lines.rotation.x = -Math.PI / 2; lines.position.y = 0.01; scene.add(lines);
+
+const models = []; const tris = [];
+let x = 0; const spacing = view === 'lineup' ? 0 : 0;
+const cols = [0xcc2222, 0x2a6ab0, 0x2e9a4a, 0xd8a020, 0x7a3a9a, 0xeeeeee, 0x222831, 0xd86a1e, 0x1e8f9a, 0x9a1e5a];
+types.forEach((t, i) => {
+  const m = createVehicleModel(t, { body: cols[i % cols.length], secondary: null });
+  m.group.traverse(o => { if (o.isMesh) { o.castShadow = o.name !== 'glass'; } });
+  models.push(m); scene.add(m.group); tris.push(t + ':' + JSON.stringify(vehicleTriangleCount(t)));
+  if (flag('burnt')) m.setBurnt(true);
+  if (q.get('dmg')) m.setDamage(+q.get('dmg'));
+});
+if (view === 'lineup') {
+  // flow layout: rows of vehicles, each given room according to its length
+  const maxW = +(q.get('width') || 70); let x = 0, z = 0, rowD = 0; const pos = [];
+  models.forEach((m, i) => {
+    const ext = m.def.length * 0.88 + 2.2; const dep = m.def.kind === 'heli' ? 12 : m.def.length * 0.55 + 3;
+    if (x + ext > maxW && x > 0) { x = 0; z += rowD + 2; rowD = 0; }
+    pos.push([x + ext / 2, z]); x += ext; rowD = Math.max(rowD, dep);
+  });
+  let maxX = 0, maxZ = 0; pos.forEach(p => { maxX = Math.max(maxX, p[0]); maxZ = Math.max(maxZ, p[1]); });
+  models.forEach((m, i) => { m.group.position.set(pos[i][0] - maxX / 2, 0, pos[i][1] - maxZ / 2); m.group.rotation.y = 0.55; });
+  window.__lineup = { maxX, maxZ };
+}
+if (flag('lights')) models.forEach(m => { m.setHeadlights(true); m.setBrake(true); m.setReverse(true); m.setIndicators(-1); });
+if (flag('siren')) models.forEach(m => m.setSiren(true));
+const cam = new THREE.PerspectiveCamera(flag('wide') ? 55 : 40, innerWidth / innerHeight, 0.1, 500);
+const tgt = new THREE.Vector3();
+const QUAD = [['q', 0, 1], ['side', 1, 1], ['qr', 0, 0], ['top', 1, 0]];
+function renderQuad() {
+  const m0 = models[0], len = m0.def.length, h = m0.def.height;
+  const W = innerWidth, H = innerHeight; r.setScissorTest(true);
+  const c = new THREE.PerspectiveCamera(32, (W / 2) / (H / 2), 0.1, 500);
+  const dirs = { q: [0.75, 0.30, 0.62], qr: [0.75, 0.30, -0.62], side: [1, 0.06, 0], top: [0.001, 1, 0.001] };
+  const cx = m0.group.position.x; const t = new THREE.Vector3(cx, h * 0.45, 0);
+  QUAD.forEach(([k, gx, gy]) => {
+    const n = new THREE.Vector3(...dirs[k]).normalize(); const d = len * (m0.def.kind === 'heli' ? 1.3 : len > 8 ? 1.45 : 0.92) + 1.4;
+    c.position.copy(t).addScaledVector(n, d * (k === 'top' ? 1.05 : 1)); c.lookAt(t);
+    r.setViewport(gx * W / 2, gy * H / 2, W / 2, H / 2); r.setScissor(gx * W / 2, gy * H / 2, W / 2, H / 2); r.render(scene, c);
+  });
+  r.setScissorTest(false);
+}
+function place() {
+  const m0 = models[0]; const len = m0.def.length; const h = m0.def.height;
+  if (view === 'lineup') { const L = window.__lineup; const dist = Math.max(L.maxX * 0.9, L.maxZ * 2.2 + 20, 30); cam.position.set(0, dist * 0.55, dist * 0.85 + L.maxZ / 2); tgt.set(0, 0.5, 0); cam.fov = 40; }
+  else {
+    const d = len * (m0.def.kind === "heli" ? 1.5 : 1.05) + 1.2; const p = m0.group.position; const cx = p.x + (models.length - 1) * 7;
+    tgt.set(cx, h * 0.45, 0);
+    const R = { q: [0.75, 0.30, 0.62], qr: [0.75, 0.30, -0.62], side: [1, 0.08, 0], rear: [0, 0.22, -1], front: [0, 0.2, 1], top: [0.001, 1, 0.001], qlow: [0.8, 0.06, 0.6] }[view] || [1, 0.3, 1];
+    const n = new THREE.Vector3(...R).normalize();
+    cam.position.copy(tgt).addScaledVector(n, d);
+  }
+  cam.lookAt(tgt);
+}
+place();
+// orbit by mouse for humans
+let dragging = false, ax = 0, ay = 0;
+addEventListener('pointerdown', e => { dragging = true; });
+addEventListener('pointerup', () => dragging = false);
+addEventListener('pointermove', e => { if (!dragging) return; const off = cam.position.clone().sub(tgt); const a = Math.atan2(off.x, off.z) - e.movementX * 0.01; const rr = Math.hypot(off.x, off.z); off.x = Math.sin(a) * rr; off.z = Math.cos(a) * rr; off.y = Math.max(0.3, off.y + e.movementY * 0.05); cam.position.copy(tgt).add(off); cam.lookAt(tgt); });
+addEventListener('wheel', e => { const off = cam.position.clone().sub(tgt); off.multiplyScalar(1 + Math.sign(e.deltaY) * 0.08); cam.position.copy(tgt).add(off); });
+addEventListener('keydown', e => { const k = e.key; const each = f => models.forEach(f);
+  if (k === 'l') each(m => { m.setHeadlights(!m.st.head); }); if (k === 'b') each(m => m.setBrake(!m.st.brake)); if (k === 's') each(m => m.setSiren(!m.st.siren));
+  if (k === 'r') each(m => m.setReverse(!m.st.rev)); if (k === 'i') each(m => m.setIndicators(m.st.ind ? 0 : -1)); if (k === 'x') each(m => m.setBurnt(!m.st.burnt));
+  if (k === 'd') each(m => m.setDamage(m.st.damage > 0.9 ? 0 : m.st.damage + 0.34)); });
+document.getElementById('info').textContent = tris.join('   ') + '   keys: l b s r i x d';
+let t = 0, last = performance.now(); const steer = flag('static') ? 0 : 1;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
+  models.forEach(m => { m.update(dt); m.wheels.forEach(w => { w.spin.rotation.x += dt * 6 * (steer ? 1 : 0); if (w.steer) w.pivot.rotation.y = steer ? Math.sin(t * 1.3) * 0.4 : (+q.get('steerang') || 0); }); });
+  if (view === 'quad') renderQuad(); else r.render(scene, cam);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.__ready = true;
+console.log('vehicles: ' + tris.join(' | '));
+</script>

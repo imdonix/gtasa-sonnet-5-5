@@ -1,0 +1,220 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Audio test</title>
+<script>if (location.search.includes("nocal")) globalThis.__AUDIO_NOCAL = true;</script>
+<body style="margin:0;background:#1b1d22;color:#ddd;font:13px/1.4 system-ui,sans-serif">
+<script type="importmap">{"imports":{"three":"../lib/three.module.js","three/addons/":"../lib/addons/"}}</script>
+<style>
+  body{padding:12px}
+  h2{margin:14px 0 6px;font-size:14px;color:#9ad}
+  button{background:#2c3340;color:#eee;border:1px solid #455;border-radius:4px;padding:4px 8px;margin:2px;cursor:pointer}
+  button:hover{background:#3b4658} button.on{background:#2a6b3c}
+  label{margin-right:12px} input[type=range]{vertical-align:middle;width:140px}
+  #log{white-space:pre;font:11px/1.3 monospace;background:#111;padding:6px;max-height:240px;overflow:auto}
+  .row{margin:4px 0}
+</style>
+<h1 style="font-size:16px;margin:0 0 8px">GameAudio test bench</h1>
+<div class="row"><button id="init" style="background:#6b2a2a">INIT AUDIO (click first)</button>
+  <label>master <input id="vm" type="range" min="0" max="1" step="0.01" value="0.85"></label>
+  <label>sfx <input id="vs" type="range" min="0" max="1" step="0.01" value="1"></label>
+  <label>music <input id="vmu" type="range" min="0" max="1" step="0.01" value="0.7"></label></div>
+<div class="row">Listener yaw <input id="yaw" type="range" min="-3.14" max="3.14" step="0.05" value="0"> |
+  3D test: <button data-pos="-20,0,0">shot left</button><button data-pos="0,0,20">shot front</button><button data-pos="20,0,0">shot right</button>
+  <button data-pos="0,0,-60">shot far behind</button><button data-pos="0,0,-300">shot 300m</button></div>
+<h2>Radio</h2>
+<div class="row" id="radio"></div>
+<div class="row"><button id="rprev">&lt; prev</button><button id="rnext">next &gt;</button><button id="roff">off</button>
+  <label>duck <input id="duck" type="range" min="0" max="1" step="0.05" value="0"></label> <b id="np"></b></div>
+<h2>One-shots</h2><div id="oneshots"></div>
+<h2>Loops (toggle)</h2><div id="loops"></div>
+<h2>Engines</h2><div id="engines"></div>
+<div class="row"><label>rpm <input id="rpm" type="range" min="0" max="1" step="0.01" value="0.2"></label>
+  <label>throttle <input id="thr" type="range" min="0" max="1" step="0.01" value="0"></label>
+  <label><input type="checkbox" id="auto"> auto-sweep</label></div>
+<h2>Ambience</h2>
+<div id="amb"></div>
+<h2>Automated tests</h2>
+<div class="row"><button id="t_all">run offline level report</button><button id="t_radio">radio level report</button></div>
+<div id="log"></div>
+<script type="module">
+import { GameAudio } from '../src/audio.js';
+const $ = (s) => document.querySelector(s);
+const log = (...a) => { const s = a.join(' '); $('#log').textContent += s + '\n'; console.log(s); };
+const audio = new GameAudio(); window.audio = audio; window.GameAudio = GameAudio;
+
+// ---------------------------------------------------------------- UI
+$('#init').onclick = () => { log('init ->', audio.init()); buildUI(); };
+for (const [id, k] of [['vm', 'master'], ['vs', 'sfx'], ['vmu', 'music']]) $('#' + id).oninput = (e) => audio.setVolumes({ [k]: +e.target.value });
+let yaw = 0; $('#yaw').oninput = (e) => { yaw = +e.target.value; audio.update(0.016, { x: 0, y: 0, z: 0, yaw }); };
+document.querySelectorAll('[data-pos]').forEach((b) => b.onclick = () => {
+  const [x, y, z] = b.dataset.pos.split(',').map(Number); audio.update(0.016, { x: 0, y: 0, z: 0, yaw });
+  audio.play('shot_ak', { pos: { x, y, z } });
+});
+let uiBuilt = false;
+function buildUI() {
+  if (uiBuilt || !audio.ready) return; uiBuilt = true;
+  const one = $('#oneshots');
+  for (const n of audio.sfxNames) { const b = document.createElement('button'); b.textContent = n; b.onclick = () => audio.play(n); one.appendChild(b); }
+  const lp = $('#loops');
+  for (const n of audio.loopNames) {
+    const b = document.createElement('button'); b.textContent = n; let h = null;
+    b.onclick = () => { if (h) { h.stop(); h = null; b.classList.remove('on'); } else { h = audio.loop(n); b.classList.add('on'); } };
+    lp.appendChild(b);
+  }
+  const eg = $('#engines'); let eng = null, ekind = null;
+  for (const k of audio.engineKinds) {
+    const b = document.createElement('button'); b.textContent = 'engine ' + k;
+    b.onclick = () => { if (eng) { eng.stop(); eng = null; } if (ekind === k) { ekind = null; b.classList.remove('on'); return; } eg.querySelectorAll('button').forEach((x) => x.classList.remove('on')); ekind = k; eng = audio.engine(k); b.classList.add('on'); };
+    eg.appendChild(b);
+  }
+  let ph = 0;
+  setInterval(() => {
+    if (!eng) return; let r = +$('#rpm').value, t = +$('#thr').value;
+    if ($('#auto').checked) { ph += 0.03; r = 0.5 + 0.5 * Math.sin(ph); t = r > Math.sin(ph - 0.03) * 0.5 + 0.5 ? 1 : 0; $('#rpm').value = r; $('#thr').value = t; }
+    eng.update(r, t, null);
+  }, 16);
+  const am = $('#amb');
+  const st = { night01: 0, rain01: 0, crowd01: 0, traffic01: 0, wind01: 0, sea01: 0 };
+  for (const k of Object.keys(st)) {
+    const l = document.createElement('label'); l.textContent = k + ' ';
+    const i = document.createElement('input'); i.type = 'range'; i.min = 0; i.max = 1; i.step = 0.05; i.value = 0;
+    i.oninput = () => { st[k] = +i.value; audio.setAmbient(st); }; l.appendChild(i); am.appendChild(l);
+  }
+  setInterval(() => audio.update(0.5, { x: 0, y: 0, z: 0, yaw }), 500);
+  const rd = $('#radio');
+  audio.radio.stations.forEach((s, i) => { const b = document.createElement('button'); b.textContent = i + ' ' + s.name + ' (' + s.genre + ')'; b.onclick = () => audio.radio.set(i); rd.appendChild(b); });
+  $('#rprev').onclick = () => audio.radio.prev(); $('#rnext').onclick = () => audio.radio.next(); $('#roff').onclick = () => audio.radio.set(-1);
+  $('#duck').oninput = (e) => audio.radio.setDuck(+e.target.value);
+  setInterval(() => { $('#np').textContent = audio.radio.current < 0 ? '(off)' : audio.radio.stations[audio.radio.current].name + ': ' + audio.radio.nowPlaying(); }, 500);
+}
+
+// ---------------------------------------------------------------- offline analysis helpers
+const SR = 44100;
+function fft(re, im) { // in-place radix-2
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) { let cr = 1, ci = 0; for (let k = 0; k < len / 2; k++) {
+      const a = i + k, b = i + k + len / 2, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+      re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti; const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr; } }
+  }
+}
+function analyse(buf, from = 0, to = buf.duration) {
+  const a = buf.getChannelData(0), b = buf.numberOfChannels > 1 ? buf.getChannelData(1) : a;
+  const i0 = Math.floor(from * buf.sampleRate), i1 = Math.min(a.length, Math.floor(to * buf.sampleRate));
+  let peak = 0, pk = 0, ss = 0, clip = 0, last = 0;
+  for (let i = i0; i < i1; i++) {
+    const m = Math.max(Math.abs(a[i]), Math.abs(b[i]));
+    if (m > peak) { peak = m; pk = i; } if (m >= 0.999) clip++; ss += (a[i] * a[i] + b[i] * b[i]) / 2; if (m > 0.003) last = i;
+  }
+  const rms = Math.sqrt(ss / Math.max(1, i1 - i0));
+  // spectral centroid around the loudest 8192 window
+  const N = 8192, re = new Float64Array(N), im = new Float64Array(N), st = Math.max(0, Math.min(a.length - N, pk - 1024));
+  for (let i = 0; i < N; i++) { const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N); re[i] = (a[st + i] || 0) * w; }
+  fft(re, im); let sw = 0, s = 0; for (let k = 1; k < N / 2; k++) { const m = Math.hypot(re[k], im[k]); sw += m * k * buf.sampleRate / N; s += m; }
+  const cen = s > 0 ? sw / s : 0;
+  // crude low band share (<200 Hz)
+  let lo = 0; for (let k = 1; k < Math.floor(200 * N / buf.sampleRate); k++) lo += re[k] * re[k] + im[k] * im[k]; let all = 0; for (let k = 1; k < N / 2; k++) all += re[k] * re[k] + im[k] * im[k];
+  const db = (x) => (x > 0 ? (20 * Math.log10(x)).toFixed(1) : '-inf');
+  return { peak, peakDb: db(peak), rmsDb: db(rms), rms, len: last / buf.sampleRate, centroid: Math.round(cen), lowShare: all > 0 ? +(lo / all).toFixed(2) : 0, clip, nan: Number.isNaN(peak) };
+}
+async function render(secs, setup, opts = {}) {
+  const ctx = new OfflineAudioContext(2, Math.ceil(SR * secs), SR);
+  const a = new GameAudio(); if (!a.init(ctx, { raw: opts.raw !== false })) throw new Error('init failed');
+  await setup(a, ctx); return { buf: await ctx.startRendering(), a };
+}
+window.AT = { render, analyse, fft, SR };
+
+// Offline level report for every one-shot, loop and engine
+async function levelReport(reps = 1) {
+  const rows = [];
+  const names = audio.sfxNames.length ? audio.sfxNames : new GameAudio().sfxNames;
+  const probe = new GameAudio(); const sfx = probe.sfxNames, loops = probe.loopNames, engs = probe.engineKinds;
+  for (const n of sfx) { // several renders (noise is random) -> report the mean peak
+    let acc = 0, last = null; for (let r = 0; r < reps; r++) { const { buf } = await render(5, (a) => a.play(n)); last = analyse(buf); acc += 20 * Math.log10(Math.max(1e-9, last.peak)); }
+    last.peakDb = (acc / reps).toFixed(1); rows.push(['sfx', n, last]);
+  }
+  for (const n of loops) {
+    const { buf } = await render(3, (a) => { a.loop(n); });
+    rows.push(['loop', n, analyse(buf, 0.5, 3)]);
+  }
+  for (const k of engs) for (const [r, t] of [[0, 0], [0.5, 0.5], [1, 1]]) {
+    const { buf } = await render(2, (a) => { const e = a.engine(k); e.update(r, t, null); });
+    rows.push(['engine', k + ' rpm' + r + ' thr' + t, analyse(buf, 0.3, 2)]);
+  }
+  for (const [kind, n, s] of rows) log(kind.padEnd(6), n.padEnd(26), 'peak', String(s.peakDb).padStart(6), 'rms', String(s.rmsDb).padStart(6), 'len', s.len.toFixed(2).padStart(5), 'cent', String(s.centroid).padStart(5), 'low', s.lowShare, s.clip ? 'CLIP' + s.clip : '', s.nan ? 'NaN!' : '');
+  return rows.map(([k, n, s]) => ({ k, n, peakDb: s.peakDb, rmsDb: s.rmsDb, len: +s.len.toFixed(2), cen: s.centroid, low: s.lowShare, clip: s.clip, nan: s.nan }));
+}
+window.AT.levelReport = levelReport;
+$('#t_all').onclick = () => levelReport();
+
+async function radioReport(secs = 40) {
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    const { buf, a } = await render(secs, (a, ctx) => { a.radio._offlineRender(i, secs); });
+    const s = analyse(buf, 2, secs);
+    // loudness per 5 s block, to see section dynamics
+    const blocks = []; for (let t = 2; t + 5 <= secs; t += 5) blocks.push(analyse(buf, t, t + 5).rmsDb);
+    const line = { st: i, name: a.radio.stations[i].name, title: a.radio.nowPlaying(), peakDb: s.peakDb, rmsDb: s.rmsDb, cen: s.centroid, clip: s.clip, nan: s.nan, blocks };
+    log(JSON.stringify(line)); out.push(line);
+  }
+  return out;
+}
+window.AT.radioReport = radioReport;
+$('#t_radio').onclick = () => radioReport();
+
+// Per-bus balance report: renders 16 s of the first chorus of each station (fixed seed), each bus soloed
+async function busReport(seed = 12345, secs = 16) {
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    let startBar = 0, buses = [];
+    { const { a } = await render(1, (a) => { const song = a.radio._offlineRender(i, 0.1, { seed }); let b = 0; for (const sec of song.form) { if (sec.n === 'chorus') break; b += sec.bars; } startBar = b; buses = Object.keys(a.radio._rt.bus); }); }
+    const row = { st: i, startBar };
+    for (const solo of [null, ...buses]) {
+      const { buf } = await render(secs + 1, (a) => { a.radio._offlineRender(i, secs + 1, { seed, startBar, solo }); });
+      const s = analyse(buf, 1.5, secs + 1); row[solo || 'ALL'] = s.rmsDb + '/' + s.peakDb;
+    }
+    log(JSON.stringify(row)); out.push(row);
+  }
+  return out;
+}
+window.AT.busReport = busReport;
+
+// Worst-case mix through the REAL master chain (compressor + soft clipper): must never exceed 1.0
+async function stress() {
+  const { buf } = await render(8, (a) => {
+    a.radio._offlineRender(0, 8);
+    for (let i = 0; i < 6; i++) { a.play('explosion', { delay: i * 0.3 }); a.play('shot_shotgun', { delay: i * 0.25 }); a.play('shot_sniper', { delay: 0.1 + i * 0.3 }); a.play('car_hit_heavy', { delay: i * 0.4 }); }
+    for (const k of ['car', 'sport', 'truck', 'bike', 'heli']) a.engine(k).update(1, 1, null);
+    a.loop('siren_police'); a.loop('heli_rotor');
+  }, { raw: false });
+  const s = analyse(buf); log('stress (real master chain): peak', s.peakDb, 'rms', s.rmsDb, 'clip samples', s.clip); return s;
+}
+window.AT.stress = stress;
+// CPU proxy: how many times faster than real time does an offline render run (higher = cheaper)
+async function perf() {
+  const res = {};
+  const time = async (name, secs, setup) => { const t0 = performance.now(); await render(secs, setup, { raw: false }); const ms = performance.now() - t0; res[name] = +(secs * 1000 / ms).toFixed(1) + 'x realtime'; };
+  await time('silence', 10, () => {});
+  for (let i = 0; i < 5; i++) await time('radio' + i, 20, (a) => a.radio._offlineRender(i, 20));
+  await time('10 engines', 10, (a) => { for (let i = 0; i < 10; i++) a.engine(['car', 'sport', 'truck', 'bike'][i % 4]).update(0.6, 0.6, { x: i * 5, y: 0, z: 30 }); });
+  await time('ambient all', 10, (a) => a.setAmbient({ night01: 1, rain01: 1, crowd01: 1, traffic01: 1, wind01: 1, sea01: 1 }));
+  log(JSON.stringify(res)); return res;
+}
+window.AT.perf = perf;
+
+// dominant-frequency tracker: per window, frequency of the strongest FFT bin (+ rms dB)
+async function freqTrack(setup, secs, win = 0.25, fmin = 60) {
+  const { buf } = await render(secs, setup), d = buf.getChannelData(0), N = 8192, out = [];
+  for (let t = 0; t + win <= secs; t += win) {
+    const st = Math.floor(t * SR), re = new Float64Array(N), im = new Float64Array(N);
+    for (let i = 0; i < N; i++) { const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N); re[i] = (d[st + i] || 0) * w; }
+    fft(re, im); let bi = 0, bm = 0, e = 0; for (let k = Math.floor(fmin * N / SR); k < N / 2; k++) { const m = Math.hypot(re[k], im[k]); e += m * m; if (m > bm) { bm = m; bi = k; } }
+    out.push(Math.round(bi * SR / N));
+  }
+  return out;
+}
+window.AT.freqTrack = freqTrack;
+window.AT.ready = true;
+</script>
