@@ -109,6 +109,8 @@ table.tbl { border-collapse: collapse; font-size: 16px; } table.tbl td { padding
 #title h1 { font-family: var(--ui); font-style: italic; font-size: 92px; color: var(--gold); margin: 0; text-shadow: 5px 5px 0 #000; letter-spacing: 4px; line-height: .95; }
 #title .sub { font-family: var(--ui); font-size: 26px; letter-spacing: 10px; margin: 6px 0 34px; color: #eee; text-shadow: 2px 2px 0 #000; }
 #title .foot { position: absolute; bottom: 18px; left: 9vw; font-size: 13px; color: #aaa; }
+#title .foot .ver { color: #666; }
+.panel .pver { margin-top: 16px; font-size: 12px; color: #777; letter-spacing: 1px; }
 #toast { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 50; background: rgba(0,0,0,.8); padding: 8px 18px; border-radius: 6px; font-size: 16px; display: none; border: 1px solid #555; }
 .shoplist { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 22px; align-items: center; font-size: 18px; min-width: 520px; }
 .shoplist .nm { font-weight: 700; } .shoplist .pr { color: #4fd36b; }

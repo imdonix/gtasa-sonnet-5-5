@@ -10,6 +10,8 @@ http.createServer((req, res) => {
   if (p.endsWith('/')) p += 'index.html';
   const f = path.normalize(path.join(root, p));
   if (!f.startsWith(root) || f.includes('node_modules')) { res.writeHead(403); return res.end('forbidden'); }
+  // dev server: the menu always shows 'dev' (the build stamps the git hash instead)
+  if (p === '/src/version.js') { res.writeHead(200, { 'Content-Type': types['.js'], 'Cache-Control': 'no-store' }); return res.end("export const VERSION = 'dev';\n"); }
   fs.readFile(f, (err, data) => {
     if (err) { res.writeHead(404); return res.end('not found'); }
     res.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });

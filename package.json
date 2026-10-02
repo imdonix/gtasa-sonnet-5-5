@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js 8080",
+    "build": "node tools/write_version.js",
     "map": "python3 tools/make_map.py",
     "test:story": "node tools/bot.js --from m01 --to m14"
   },

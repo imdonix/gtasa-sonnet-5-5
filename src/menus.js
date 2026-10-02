@@ -3,6 +3,7 @@ import { G } from './state.js';
 import { clamp, fmtMoney, pad2 } from './util.js';
 import { MPP, HALF, MAP_N } from './mapdata.js';
 import { WEAPONS, WEAPON_ORDER } from './weapons.js';
+import { VERSION } from './version.js';
 
 const $ = (id) => document.getElementById(id);
 function panel(id, html, cls = '') { let p = $(id); if (!p) { p = document.createElement('div'); p.id = id; document.body.appendChild(p); } p.className = 'panel ' + cls; p.innerHTML = html; return p; }
@@ -45,7 +46,7 @@ export class Menus {
 
   // ---------------------------------------------------------------- title
   buildTitle() {
-    const p = panel('title', `<h1>LOS SANTOS<br>RISING</h1><div class="sub">BLOOD &amp; CONCRETE</div><div class="menu" id="titleMenu"></div><div class="foot">A browser open-world crime story · WASD move · Mouse look · F enter/exit · Esc pause</div>`, '');
+    const p = panel('title', `<h1>LOS SANTOS<br>RISING</h1><div class="sub">BLOOD &amp; CONCRETE</div><div class="menu" id="titleMenu"></div><div class="foot">A browser open-world crime story · WASD move · Mouse look · F enter/exit · Esc pause <span class="ver">build ${VERSION}</span></div>`, '');
     p.style.display = '';
   }
   refreshTitle() {
@@ -60,7 +61,7 @@ export class Menus {
 
   // ---------------------------------------------------------------- pause
   buildPause() {
-    const p = panel('pausePanel', `<h1>PAUSED</h1><div class="menu" id="pauseMenu"></div>`);
+    const p = panel('pausePanel', `<h1>PAUSED</h1><div class="menu" id="pauseMenu"></div><div class="pver">build ${VERSION}</div>`);
     const m = $('pauseMenu');
     const add = (t, fn) => { const b = document.createElement('div'); b.className = 'btn'; b.textContent = t; b.onclick = () => { G.audio && G.audio.play('menu_click'); fn(); }; m.appendChild(b); };
     add('Resume', () => G.game.pause(false)); add('Map', () => this.show('map')); add('Stats', () => this.show('stats')); add('Replay a mission', () => this.show('replay')); add('Controls', () => this.show('controls')); add('Settings', () => this.show('settings'));

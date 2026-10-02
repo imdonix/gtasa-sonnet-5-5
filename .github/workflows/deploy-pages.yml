@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Stamp build version (git hash)
+        run: node tools/write_version.js
+
       - name: Verify game files
         run: |
           test -f index.html
