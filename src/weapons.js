@@ -111,9 +111,9 @@ export class Combat {
       if (hit.kind === 'ped') {
         const headshot = hit.head; info.headshot = headshot;
         const falloff = W.pellets ? clamp(1.3 - hit.t * W.range / W.range * 1.0, 0.4, 1) : 1;
-        // NPC bullets hurt the player a bit less so a few gunfights are survivable (headshots on the player are not x3)
-        const npcMul = hit.ped.isPlayer && shooter && !shooter.isPlayer ? 0.7 : 1;
-        hit.ped.damage(W.dmg * (headshot && !hit.ped.isPlayer ? 3.0 : headshot ? 1.6 : 1) * dmgMul * falloff * npcMul, info);
+        // NPC bullets hurt the player less so gunfights are survivable (headshots on the player are not x3)
+        const npcMul = hit.ped.isPlayer && shooter && !shooter.isPlayer ? 0.6 : 1;
+        hit.ped.damage(W.dmg * (headshot && !hit.ped.isPlayer ? 3.0 : headshot ? 1.3 : 1) * dmgMul * falloff * npcMul, info);
         G.fx.blood(hit.x, hit.y, hit.z, ddx, ddz, headshot ? 14 : 7);
         if (shooter && shooter.isPlayer) G.hud && G.hud.hitMarker(headshot);
       } else if (hit.kind === 'vehicle') {
@@ -121,7 +121,7 @@ export class Combat {
         G.fx.sparks(hit.x, hit.y, hit.z, 5, -ddx, -ddz);
         // occupants can be hit through the windows
         const v = hit.vehicle; const occ = v.occupants();
-        if (occ.length && hit.y > v.y - v.def.wheelRadius + 0.75) { const tgt = occ[(Math.random() * occ.length) | 0]; if (Math.random() < 0.45 && tgt !== shooter) { tgt.damage(W.dmg * dmgMul, info); G.fx.blood(hit.x, hit.y, hit.z, ddx, ddz, 6); } }
+        if (occ.length && hit.y > v.y - v.def.wheelRadius + 0.75) { const tgt = occ[(Math.random() * occ.length) | 0]; if (Math.random() < 0.45 && tgt !== shooter) { const occMul = tgt.isPlayer && shooter && !shooter.isPlayer ? 0.6 : 1; tgt.damage(W.dmg * dmgMul * occMul, info); G.fx.blood(hit.x, hit.y, hit.z, ddx, ddz, 6); } }
         if (G.audio && Math.random() < 0.5) G.audio.play('ricochet', { pos: hit, volume: 0.5 });
       } else if (hit.kind === 'static') {
         G.fx.sparks(hit.x, hit.y, hit.z, 3, -ddx, -ddz); G.fx.dust(hit.x, hit.y, hit.z, 2, 0.5, [0.6, 0.58, 0.54]);
@@ -163,7 +163,8 @@ export class Combat {
     if (best) {
       const heavy = comboIdx >= 2 || W.id === 'bat';
       const info = { source: attacker, weapon: wid, melee: true, dirx: fx, dirz: fz, knock: heavy };
-      best.damage(W.dmg * (wid === 'fist' ? (1 + comboIdx * 0.25) : 1), info);
+      const npcMul = best.isPlayer && !attacker.isPlayer ? 0.6 : 1;
+      best.damage(W.dmg * (wid === 'fist' ? (1 + comboIdx * 0.25) : 1) * npcMul, info);
       best.vx += fx * (heavy ? 4.5 : 2.2); best.vz += fz * (heavy ? 4.5 : 2.2);
       G.fx.blood(best.x, best.y + 1.3, best.z, fx, fz, 4);
       G.audio && G.audio.play(wid === 'bat' ? 'hit_bat' : 'hit_flesh', { pos: best, volume: 0.9 });

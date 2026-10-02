@@ -31,7 +31,7 @@ module.exports = async (c) => {
     ok(id + ' forced fail: mission ended', !after.active, JSON.stringify(after));
     ok(id + ' forced fail: no leaked mission entities / markers', after.peds === 0 && after.veh === 0 && after.markers === base.markers, JSON.stringify({ mid, after, base }));
     ok(id + ' forced fail: HUD clean', after.obj === '' && after.timer === 'none' && after.counter === 'none');
-    await c.eval(() => { const pl = G.player; pl.dead = false; pl.health = 100; game.state = 'play'; G.police.clear(); });
+    await c.eval(() => { const pl = G.player; pl.dead = false; pl.health = pl.maxHealth; game.state = 'play'; G.police.clear(); });
   }
 
   // ---- 2. m02: die while waiting for the cash pickup (raw promise) -> mission must fail, not hang

@@ -57,7 +57,7 @@ export class Runner {
   supply(o = {}) {
     const pl = G.player;
     for (const [w, n] of Object.entries(o.ammo || {})) { const have = pl.weapons[w] ? pl.totalAmmo(w) : -1; if (have < 0) pl.give(w, n, false); else if (have < n) pl.give(w, n - have, false); }
-    if (o.hp && pl.health < o.hp) pl.health = Math.min(pl.maxHealth, o.hp);
+    if (o.hp) { const want = o.hp * pl.maxHealth / 100; if (pl.health < want) pl.health = Math.min(pl.maxHealth, want); }
     if (o.armor && pl.armor < o.armor) pl.armor = o.armor;
     if (o.equip && pl.weapons[o.equip]) pl.equip(o.equip);
     G.hud.weaponChanged();

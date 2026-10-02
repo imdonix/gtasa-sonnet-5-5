@@ -45,7 +45,7 @@ const OUT = '/tmp/claude-1001/-home-tamasmagyar-Work-testgame/2244238a-7010-4c23
     for (let idx = startIdx; idx <= endIdx; idx++) {
       const def = M.defs[idx]; if (!def) break;
       log('--- starting', def.id, def.title);
-      G.police.clear(); pl.health = 100; pl.dead = false; game.state = 'play'; game.timeScale = 1; pl.controlEnabled = true;
+      G.police.clear(); pl.health = pl.maxHealth; pl.dead = false; game.state = 'play'; game.timeScale = 1; pl.controlEnabled = true;
       if (!def.autostart && def.where) { const w = def.where(); if (w) { game.teleport(w.x + 4, w.z + 4, 0); } }
       // start
       M.refreshStarts(); await sleep(50);

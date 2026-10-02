@@ -85,7 +85,7 @@ export class Ped {
   damage(amount, info = {}) {
     if (this.dead || this.invincible || amount <= 0) return;
     if (this.vehicle && info.explosion === undefined && info.vehicleCrash) amount *= 0.5;
-    if (this.armor > 0) { const a = Math.min(this.armor, amount * 0.75); this.armor -= a; amount -= a * 0.9; }
+    if (this.armor > 0) { const soak = this.isPlayer ? 0.85 : 0.75, eff = this.isPlayer ? 0.95 : 0.9; const a = Math.min(this.armor, amount * soak); this.armor -= a; amount -= a * eff; }
     this.health -= amount;
     if (this.life) endLife(this);
     if (info.source && info.source !== this) this.lastAttacker = info.source;
@@ -818,7 +818,7 @@ export class PedManager {
           if (G.time - (p.lastVehHit || -9) < 0.9 || (p.downT > 0 && sp < 5)) { p.x += hit.nx * hit.depth; p.z += hit.nz * hit.depth; p.vx += hit.nx * 1.5 * dt * 10; p.vz += hit.nz * 1.5 * dt * 10; continue; }
           p.lastVehHit = G.time;
           const rel = sp;
-          p.damage(rel * rel * 2.4 * (v.phys.mass / 1500) ** 0.4 * (p.isPlayer ? 0.45 : 1), { source: v.driver, vehicle: v, vehicleCrash: true, dirx: v.vx / sp, dirz: v.vz / sp });
+          p.damage(rel * rel * 2.4 * (v.phys.mass / 1500) ** 0.4 * (p.isPlayer ? 0.32 : 1), { source: v.driver, vehicle: v, vehicleCrash: true, dirx: v.vx / sp, dirz: v.vz / sp });
           p.vx = v.vx * 0.8 + hit.nx * 2; p.vz = v.vz * 0.8 + hit.nz * 2; p.vy = 3 + Math.min(4, rel * 0.2); p.grounded = false; p.airborneT = 0.3;
           p.knockdown(rel > 8 ? 2.2 : 1.2);
           v.vx *= 0.96; v.vz *= 0.96;

@@ -38,7 +38,7 @@ module.exports = async (ctx) => {
     const v = G.vehicles.spawn('sedan', cx - 100, cz, Math.PI / 2, { owner: 'player' }); pl.enterVehicle(v, 0, true);
     v.vx = 25; v.vz = 0; QA.sim(0.1); const h0 = pl.health; pl.invincible = false;
     press('KeyF'); QA.sim(3); out.exitAt90kmh = { health: Math.round(pl.health), dead: pl.dead, onGround: pl.grounded, downT: +pl.downT.toFixed(1) };
-    pl.health = 100; pl.dead = false;
+    pl.health = pl.maxHealth; pl.dead = false;
     // carjack a civilian-driven car
     QA.clear(); const v2 = await QA.car('sedan', cx + 20, cz, 0, { owner: 'traffic' }); const d = v2.driver; d.invincible = false;
     const dw = v2.doorWorldPos(0); pl.x = dw.x; pl.z = dw.z; QA.sim(0.1); press('KeyF'); QA.sim(1.5);

@@ -28,7 +28,7 @@ module.exports = async (ctx) => {
         G.input.pressed.clear(); G.input.btnPressed.clear(); G.input.wheel = 0;
         const pl = G.player;
         if (game.state === 'dead' || game.state === 'busted') { game.deadT = 99; try { game.respawn(game.state); } catch (e) { window.__ex++; window.__errs.push('EXC respawn ' + e.message); } }
-        if (pl.dead && game.state === 'play') { pl.dead = false; pl.health = 100; }
+        if (pl.dead && game.state === 'play') { pl.dead = false; pl.health = pl.maxHealth; }
         if (i % 600 === 0 && !pl.vehicle && Math.random() < 0.5) { const c = G.vehicles.list.find(v => !v.exploded && Math.hypot(v.x - pl.x, v.z - pl.z) < 60); if (c) { const dw = c.doorWorldPos(0); game.teleport(dw.x, dw.z, 0); } }
         if (i % 900 === 0) { const nr = G.map.nearestRoad((Math.random() - 0.5) * 1800, (Math.random() - 0.5) * 1800, 300); if (nr && !pl.vehicle) game.teleport(nr.x + 4, nr.z, Math.random() * 6.28); }
         if (i % 30 === 0) G.world.update(0.03, pl.x, pl.z, 6);

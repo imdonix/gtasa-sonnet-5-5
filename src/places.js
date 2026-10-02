@@ -4,9 +4,9 @@ import { clamp, dist2, rrange, pick, fmtMoney } from './util.js';
 import { CLS } from './mapdata.js';
 
 const FOOD = {
-  burger: { name: 'Burger Bonanza', item: 'Bonanza Burger', cost: 10, heal: 30, color: '#ff9a2a' },
-  pizza: { name: 'Pizza Stack', item: 'Stack Slice', cost: 12, heal: 35, color: '#ff6a3a' },
-  chicken: { name: "Clucky's", item: 'Clucky Bucket', cost: 10, heal: 30, color: '#ffc83a' }
+  burger: { name: 'Burger Bonanza', item: 'Bonanza Burger', cost: 10, heal: 45, color: '#ff9a2a' },
+  pizza: { name: 'Pizza Stack', item: 'Stack Slice', cost: 12, heal: 50, color: '#ff6a3a' },
+  chicken: { name: "Clucky's", item: 'Clucky Bucket', cost: 10, heal: 45, color: '#ffc83a' }
 };
 const PAINT = [0xc0c0c8, 0x1d1d22, 0xf2f2f2, 0x9a1c1c, 0x1c3a8a, 0x2a6a3a, 0xb58a1a, 0x5a5a66, 0x7a3a9a, 0xd06a1c, 0x3a7a9a, 0xe8d8b0, 0xff4fa0, 0x39c4a8];
 

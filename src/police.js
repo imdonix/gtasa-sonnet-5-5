@@ -49,7 +49,7 @@ export class Police {
   onShot(shooter, W, x, z) {
     if (!shooter || !shooter.isPlayer) return;
     this.armedT = 12;
-    if ((W.noise || 0) > 20 && this.witnessedByCop(x, z, 55)) this.raise(this.stars === 0 ? 1 : 0, 'shots', 1);
+    if ((W.noise || 0) > 20 && this.witnessedByCop(x, z, 40)) this.raise(this.stars === 0 ? 1 : 0, 'shots', 1);
   }
   witnessedByCop(x, z, r) {
     for (const p of G.peds.list) if (!p.dead && (p.role === 'cop' || p.role === 'swat') && dist2(p.x, p.z, x, z) < r * r) return true;
@@ -73,14 +73,14 @@ export class Police {
       if (this.witnessed(ped.x, ped.z, 50, 14)) this.raise(1, 'murder', 1);
     }
   }
-  // hurting an officer: straight to 2 stars, +1 at most every 8 s while it continues (not one star per bullet)
-  onAttackCop(cop, src) { if (src && src.isPlayer) { if (this.stars < 2) this.raise(0, 'assault on officer', 2); else if (G.time - (this._assaultT || -99) > 8) { this._assaultT = G.time; this.raise(1, 'assault on officer', 2); } else { this.lastCrimeT = G.time; this.hideT = 0; } } }
+  // hurting an officer: first offense to 1 star, +1 at most every 8 s while it continues (not one star per bullet)
+  onAttackCop(cop, src) { if (src && src.isPlayer) { if (G.time - (this._assaultT || -99) > 8) { this._assaultT = G.time; this.raise(1, 'assault on officer', 1); } else { this.lastCrimeT = G.time; this.hideT = 0; } } }
   onCarTheft(v) { if (this.witnessedByCop(v.x, v.z, 40)) this.raise(1, 'grand theft auto', 1); }
   onCarjack(v, d) { if (this.witnessed(v.x, v.z, 45, 14)) this.raise(1, 'carjacking', 1); }
-  onRunOver(ped, v) { if (ped.role === 'cop' || ped.role === 'swat') { this.raise(1, 'hit cop', 2); return; } if (this.witnessedByCop(ped.x, ped.z, 55)) this.raise(1, 'vehicular assault', 1); }
-  // ramming / being rammed by police raises the heat to 2 stars, it does not escalate a chase that is already on
-  onPlayerCrash(v, other, speed) { if (other && (other.type === 'police' || other.type === 'swatvan') && speed > 3 && this.stars < 2) this.raise(0, 'police collision', 2); }
-  onExplosion(x, z, src) { if (src && (src.isPlayer || (src.vehicle && src.vehicle.driver && src.vehicle.driver.isPlayer)) && this.witnessed(x, z, 100, 40)) this.raise(1, 'explosion', 2); }
+  onRunOver(ped, v) { if (ped.role === 'cop' || ped.role === 'swat') { this.raise(1, 'hit cop', 1); return; } if (this.witnessedByCop(ped.x, ped.z, 55)) this.raise(1, 'vehicular assault', 1); }
+  // bumping police gets their attention (1 star); it does not escalate a chase that is already on
+  onPlayerCrash(v, other, speed) { if (other && (other.type === 'police' || other.type === 'swatvan') && speed > 5) { if (this.stars < 1) this.raise(0, 'police collision', 1); else { this.lastCrimeT = G.time; this.hideT = 0; } } }
+  onExplosion(x, z, src) { if (src && (src.isPlayer || (src.vehicle && src.vehicle.driver && src.vehicle.driver.isPlayer)) && this.witnessed(x, z, 70, 40)) this.raise(1, 'explosion', 2); }
   arrestAttempt(cop, dt) {
     const pl = G.player; if (pl.dead || this.stars > 2) return;
     if (pl.vehicle && pl.vehicle.totalSpeed > 4) return;
@@ -121,7 +121,7 @@ export class Police {
       this.updateRoadblocks(dt);
       this.updateCops(dt);
       // decay
-      const limit = 16 + this.stars * 5;
+      const limit = 14 + this.stars * 4;
       if (!this.seenNow) { this.hideT += dt; if (this.hideT > limit) { this.hideT = 0; this.setStars(this.stars - 1); G.hud && G.hud.notify(this.stars === 0 ? 'Wanted level lost' : 'Wanted level dropping'); } }
       else this.hideT = Math.max(0, this.hideT - dt * 0.5);
       if (this.arrestT > 0) this.arrestT = Math.max(0, this.arrestT - dt * 1.5);
@@ -144,7 +144,7 @@ export class Police {
     G.hud && G.hud.setPoliceSeen(seen);
   }
 
-  targetCars() { return [0, 2, 3, 4, 5, 6, 7][this.stars]; }
+  targetCars() { return [0, 1, 2, 3, 5, 6, 7][this.stars]; }
 
   updateSpawns(dt) {
     this.spawnT -= dt; if (this.spawnT > 0) return; this.spawnT = 1.4;

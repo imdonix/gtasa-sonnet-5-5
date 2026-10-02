@@ -9,7 +9,7 @@ import { look } from './storylib.js';
 const _fa = new THREE.Vector3(), _fa2 = new THREE.Vector3();
 const SLOT_KEYS = { Digit1: [0, 1], Digit2: [2], Digit3: [3], Digit4: [4], Digit5: [5], Digit6: [6], Digit7: [7], Digit8: [8], Digit9: [9] };
 const CHEATS = {
-  hesoyam: p => { p.health = p.maxHealth = 100; p.armor = 100; p.money += 250000; G.hud.notify('Health, armor and $250,000 added'); },
+  hesoyam: p => { p.health = p.maxHealth; p.armor = 100; p.money += 250000; G.hud.notify('Health, armor and $250,000 added'); },
   aezakmi: p => { G.police.clear(); G.hud.notify('Wanted level cleared'); },
   leavemealone: p => { G.police.clear(); G.hud.notify('Wanted level cleared'); },
   weaponset: p => { for (const w of ['bat', 'pistol', 'deagle', 'shotgun', 'smg', 'ak47', 'sniper', 'rpg', 'grenade', 'molotov']) p.give(w, WEAPONS[w].pack * 4, false); G.hud.notify('Weapons added'); },
@@ -25,10 +25,10 @@ const CHEATS = {
 
 export class Player extends Ped {
   constructor(x, z) {
-    super({ x, z, yaw: 0, role: 'player', gang: 1, health: 100, appearance: look('jay') });
+    super({ x, z, yaw: 0, role: 'player', gang: 1, health: 150, appearance: look('jay') });
     this.appearance.name = 'Jay';
     this.isPlayer = true;
-    this.maxHealth = 100; this.health = 100; this.armor = 0;
+    this.maxHealth = 150; this.health = 150; this.armor = 0;
     this.money = 500; this.respect = 0; this.stamina = 100; this.maxStamina = 100;
     this.aimMode = false; this.lockTarget = null; this.sprinting = false;
     this.stats = { kills: 0, copKills: 0, distance: 0, carsStolen: 0, moneyEarned: 0, missions: 0, deaths: 0, busted: 0, playTime: 0, tags: 0, headshots: 0 };

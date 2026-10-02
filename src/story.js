@@ -23,7 +23,7 @@ export const STORY1 = [
       const start = { x: tp.x - Math.sin(term.yaw) * -3, z: tp.z - Math.cos(term.yaw) * -3 };
       G.game.teleport(tp.x, tp.z, Math.atan2(ks.x - tp.x, ks.z - tp.z));
       G.world.update(0, tp.x, tp.z, 60);
-      const pl = G.player; pl.health = 100;
+      const pl = G.player; pl.health = pl.maxHealth;
       await r.cutscene([
         shot({ x: tp.x + 60, z: tp.z + 70, h: 55 }, { x: tp.x, z: tp.z, h: 5 }, 5.2, { to: { x: tp.x - 40, z: tp.z + 50, h: 30 }, fov: 50 }),
         shot({ x: tp.x - Math.sin(term.yaw) * 4, z: tp.z - Math.cos(term.yaw) * 4, h: 2.4 }, { x: pl.x, z: pl.z, h: 1.6 }, 4.2, { fov: 40 }),

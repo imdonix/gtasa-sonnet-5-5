@@ -6,7 +6,7 @@ module.exports = async (ctx) => {
   const stars = (process.env.STARS || '1,2,3,4,5,6').split(',').map(Number); const SECS = +(process.env.SECS || 90); const MODE = process.env.MODE || 'drive';
   for (const st of stars) {
     const r = await ctx.eval(async (st, SECS, MODE, SPD) => {
-      const pl = G.player; QA.clear(); G.population.carTarget = 12; G.population.pedTarget = 20; G.population.gangTarget = 0; G.police.clear(); pl.health = 100; pl.dead = false; game.state = 'play'; pl.invincible = false;
+      const pl = G.player; QA.clear(); G.population.carTarget = 12; G.population.pedTarget = 20; G.population.gangTarget = 0; G.police.clear(); pl.health = pl.maxHealth; pl.dead = false; game.state = 'play'; pl.invincible = false;
       const home = G.landmarks.home; const nr = G.map.nearestRoad(home.door.x + 10, home.door.z + 10, 100);
       QA.tp(nr.x, nr.z, Math.atan2(nr.tx, nr.tz)); for (let i = 0; i < 20; i++) G.world.update(0.05, nr.x, nr.z, 30);
       const v = G.vehicles.spawn('sedan', nr.x, nr.z, Math.atan2(nr.tx, nr.tz), { owner: 'player' }); pl.enterVehicle(v, 0, true);
@@ -30,7 +30,7 @@ module.exports = async (ctx) => {
         if (game.state === 'busted') { busted = true; break; }
         if (i % 300 === 0) { const cops = G.vehicles.list.filter(q => q.owner === 'police' && !q.wrecked); const foot = G.peds.list.filter(p => (p.role === 'cop' || p.role === 'swat') && !p.vehicle && !p.dead);
           log.push({ t: Math.round(i / 30), stars: G.police.stars, cars: cops.length, footCops: foot.length, nearest: cops.length ? Math.round(Math.min(...cops.map(c => Math.hypot(c.x - v.x, c.z - v.z)))) : null, heli: !!G.police.heli, hp: Math.round(pl.health), vhp: Math.round(v.health), spd: Math.round(v.speed), seen: G.police.seenNow, hide: Math.round(G.police.hideT), rb: G.police.roadblocks.length }); }
-        if (v.hpLock) { v.health = v.maxHealth; pl.health = 100; } if (v.wrecked) break;
+        if (v.hpLock) { v.health = v.maxHealth; pl.health = pl.maxHealth; } if (v.wrecked) break;
       }
       const cops = G.vehicles.list.filter(q => q.owner === 'police' && !q.wrecked);
       const stuck = cops.filter(c => c.ai && (c.ai.stuckCount || 0) > 2).length;

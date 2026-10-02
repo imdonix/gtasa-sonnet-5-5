@@ -20,7 +20,7 @@ module.exports = async (ctx) => {
       for (let i = 0; i < SECS * 30; i++) {
         const t0 = performance.now(); game.sim(1 / 30); G.camera.update(1 / 30, 1 / 30, G.player, G.input); const ms = performance.now() - t0; totMs += ms; maxMs = Math.max(maxMs, ms); n++;
         if (i % 30 === 0) G.world.update(0.03, G.player.x, G.player.z, 8);
-        G.player.health = 100; G.player.dead = false;
+        G.player.health = G.player.maxHealth; G.player.dead = false;
         if (i % 30 === 0) {
           maxPeds[0] = Math.max(maxPeds[0], G.peds.list.length); maxPeds[1] = Math.max(maxPeds[1], G.vehicles.list.length);
           for (const S of G.ambient.scenes) sceneKinds[S.kind] = (sceneKinds[S.kind] || 0) + 1;

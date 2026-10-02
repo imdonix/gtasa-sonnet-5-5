@@ -155,7 +155,7 @@ export class Game {
     for (const p of G.peds.list.slice()) if (p !== G.player) G.peds.remove(p);
     for (const v of G.vehicles.list.slice()) G.vehicles.remove(v);
     const save = cont ? this.readSave() : null;
-    G.player.dead = false; G.player.health = 100;
+    G.player.dead = false; G.player.health = G.player.maxHealth;
     if (G.missions) G.missions.reset();
     if (save) this.applySave(save);
     else {
@@ -167,7 +167,7 @@ export class Game {
   }
   newGameSetup() {
     const pl = G.player;
-    pl.money = 500; pl.respect = 0; pl.health = 100; pl.armor = 0; pl.weapons = { fist: { ammo: 0, clip: 0 } }; pl.equip('fist');
+    pl.money = 500; pl.respect = 0; pl.health = pl.maxHealth; pl.armor = 0; pl.weapons = { fist: { ammo: 0, clip: 0 } }; pl.equip('fist');
     pl.stats = { kills: 0, copKills: 0, distance: 0, carsStolen: 0, moneyEarned: 0, missions: 0, deaths: 0, busted: 0, playTime: 0, tags: 0, headshots: 0 };
     G.sky.hour = 11; G.police.clear();
     if (G.missions) G.missions.startNewGame();

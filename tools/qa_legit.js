@@ -33,7 +33,7 @@ const OUT = '/tmp/claude-1001/-home-tamasmagyar-Work-testgame/2244238a-7010-4c23
       const def = M.defs.find(x => x.id === ids[idx]);
       const row = { id: def.id, title: def.title, attempts: [] }; let passed = false;
       for (let att = 1; att <= P.tries && !passed; att++) {
-        failReason = ''; pl.health = 100; pl.armor = P.armor; pl.dead = false; G.police.clear(); game.timeScale = 1; game.state = 'play'; pl.controlEnabled = true;
+        failReason = ''; pl.health = pl.maxHealth; pl.armor = P.armor; pl.dead = false; G.police.clear(); game.timeScale = 1; game.state = 'play'; pl.controlEnabled = true;
         if (pl.vehicle) pl.exitVehicle(true);
         const pe0 = G.peds.list.length, ve0 = G.vehicles.list.length;
         H.reset(); H.resetAI();
