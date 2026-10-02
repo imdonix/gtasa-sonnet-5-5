@@ -21,10 +21,18 @@ export class Police {
     if (this.noWanted || !this.enabled) return;
     const pl = G.player; if (!pl || pl.dead) return;
     const old = this.stars;
-    this.stars = clamp(Math.max(this.stars, min) + (this.stars >= min ? n : 0), 0, this.maxStars);
-    if (this.stars > 0 && min > this.stars) this.stars = min;
-    this.lastCrimeT = G.time; this.hideT = 0;
-    if (this.stars !== old) {
+    const now = G.time;
+    const T = this._crimeT || (this._crimeT = {});
+    let stars = clamp(Math.max(old, min) + (old >= min ? n : 0), 0, this.maxStars);
+    // Rate limit: each offence type can add a star at most every 8 s and any star gain at
+    // most every 5 s, so a scrape, a burst of hits or a chain of crime hooks on one contact
+    // can never jump straight to high heat. The guaranteed level (min) of a serious crime
+    // still applies while limited (e.g. killing a cop is always worth 2 stars).
+    if (stars > old && ((reason && now - (T[reason] ?? -99) < 8) || now - (T._any ?? -99) < 5)) stars = Math.max(old, min);
+    this.stars = stars;
+    this.lastCrimeT = now; this.hideT = 0;
+    if (this.stars > old) {
+      T._any = now; if (reason) T[reason] = now;
       G.audio && G.audio.play('wanted_up');
       G.hud && G.hud.setWanted(this.stars, true);
       G.events.emit('wantedChanged', this.stars, old);
@@ -73,13 +81,13 @@ export class Police {
       if (this.witnessed(ped.x, ped.z, 50, 14)) this.raise(1, 'murder', 1);
     }
   }
-  // hurting an officer: first offense to 1 star, +1 at most every 8 s while it continues (not one star per bullet)
-  onAttackCop(cop, src) { if (src && src.isPlayer) { if (G.time - (this._assaultT || -99) > 8) { this._assaultT = G.time; this.raise(1, 'assault on officer', 1); } else { this.lastCrimeT = G.time; this.hideT = 0; } } }
+  // hurting an officer: 1 star, escalating while it continues (raise() rate-limits repeats)
+  onAttackCop(cop, src) { if (src && src.isPlayer) this.raise(1, 'assault on officer', 1); }
   onCarTheft(v) { if (this.witnessedByCop(v.x, v.z, 40)) this.raise(1, 'grand theft auto', 1); }
   onCarjack(v, d) { if (this.witnessed(v.x, v.z, 45, 14)) this.raise(1, 'carjacking', 1); }
   onRunOver(ped, v) { if (ped.role === 'cop' || ped.role === 'swat') { this.raise(1, 'hit cop', 1); return; } if (this.witnessedByCop(ped.x, ped.z, 55)) this.raise(1, 'vehicular assault', 1); }
   // bumping police gets their attention (1 star); it does not escalate a chase that is already on
-  onPlayerCrash(v, other, speed) { if (other && (other.type === 'police' || other.type === 'swatvan') && speed > 5) { if (this.stars < 1) this.raise(0, 'police collision', 1); else { this.lastCrimeT = G.time; this.hideT = 0; } } }
+  onPlayerCrash(v, other, speed) { if (other && (other.type === 'police' || other.type === 'swatvan') && speed > 5) this.raise(0, 'police collision', 1); }
   onExplosion(x, z, src) { if (src && (src.isPlayer || (src.vehicle && src.vehicle.driver && src.vehicle.driver.isPlayer)) && this.witnessed(x, z, 70, 40)) this.raise(1, 'explosion', 2); }
   arrestAttempt(cop, dt) {
     const pl = G.player; if (pl.dead || this.stars > 2) return;
