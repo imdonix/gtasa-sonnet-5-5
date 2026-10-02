@@ -227,12 +227,13 @@ export class MissionManager {
   constructor() {
     this.defs = []; this.done = new Set(); this.active = null; this.flags = {}; this.startMarkers = new Map(); this.blocksShops = false; this.t = 0; this.lastFailed = null;
     this.loadStory();
-    // Story fights must not bring the police in on their own: gunfire during a mission never raises stars by itself
-    // (scripted stars via setStars and real crimes such as killing civilians / assaulting cops still count).
+    // Story fights must not bring the police in on their own: no crime raises stars during a
+    // mission, so heavy gunfights (turf wars, raids) stay star-free. Heat stays fully scripted
+    // via setStars (chases, escapes); missions with heatOnShots get open-world heat as usual.
     const P = G.police;
     if (P && !P._missionShield) {
       P._missionShield = true; const raise0 = P.raise.bind(P);
-      P.raise = (n, reason = '', min = 0) => { const a = this.active; if (reason === 'shots' && a && !a.ended && !a.def.heatOnShots) return; return raise0(n, reason, min); };
+      P.raise = (n, reason = '', min = 0) => { const a = this.active; if (a && !a.ended && !a.def.heatOnShots) return; return raise0(n, reason, min); };
     }
     G.events.on('playerDied', () => this.onPlayerFailed('You were wasted.'));
     G.events.on('playerBusted', () => this.onPlayerFailed('You were busted.'));
