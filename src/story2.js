@@ -56,7 +56,9 @@ export const STORY2 = [
       r.objective('Defend the <b>back lot</b> until Tee finishes');
       const lotBlip = r.blip({ x: lotC.x, z: lotC.z, color: '#ff5090', label: 'Back lot', priority: 4 });
       const lotMark = r.marker(lotC.x, lotC.z, { radius: 26, color: 0xff5090, once: false, arrow: false, height: 30 });
-      let awayT = 0; r.tick(dt => { const d = Math.hypot((pl.vehicle || pl).x - lotC.x, (pl.vehicle || pl).z - lotC.z); awayT = d > 90 ? awayT + dt : 0; if (awayT > 16) r.abortAll(FAIL('You abandoned Tee.')); else if (awayT > 4 && awayT < 4.05) G.hud.notify('Get back to the lot!'); });
+      // the lot must be held only while Tee is inside (timer running); once it expires the
+      // guard cleanup / limo escape legitimately leave the lot and must not fail the mission
+      let awayT = 0; r.tick(dt => { if (tm.expired) return; const d = Math.hypot((pl.vehicle || pl).x - lotC.x, (pl.vehicle || pl).z - lotC.z); awayT = d > 90 ? awayT + dt : 0; if (awayT > 16) r.abortAll(FAIL('You abandoned Tee.')); else if (awayT > 4 && awayT < 4.05) G.hud.notify('Get back to the lot!'); });
       let waveT = 0, waves = 0; const all = [];
       r.tick(dt => {
         waveT -= dt; if (tm.expired || waves > 5) return;
