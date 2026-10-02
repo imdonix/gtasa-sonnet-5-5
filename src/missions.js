@@ -225,7 +225,7 @@ export class Runner {
 // ------------------------------------------------------------------------------------------------ Manager
 export class MissionManager {
   constructor() {
-    this.defs = []; this.done = new Set(); this.active = null; this.flags = {}; this.startMarkers = new Map(); this.blocksShops = false; this.t = 0;
+    this.defs = []; this.done = new Set(); this.active = null; this.flags = {}; this.startMarkers = new Map(); this.blocksShops = false; this.t = 0; this.lastFailed = null;
     this.loadStory();
     // Story fights must not bring the police in on their own: gunfire during a mission never raises stars by itself
     // (scripted stars via setStars and real crimes such as killing civilians / assaulting cops still count).
@@ -309,9 +309,28 @@ export class MissionManager {
     this.clearStarts();
     this.start(def, { replay: true, where: w });
   }
+  clearRetry() { this.lastFailed = null; }
+  canRetry() { return !!this.lastFailed && !this.active && G.game.state === 'play' && !G.paused; }
+  retryLast() {
+    const def = this.lastFailed;
+    if (!def || this.active) return false;
+    if (G.game.state !== 'play' || G.paused) { G.hud.toast('Retry once you are back on your feet'); return false; }
+    if (def.canStart && !def.canStart()) { G.hud.toast(def.cantStart || 'You cannot start this yet'); return false; }
+    this.lastFailed = null;
+    G.hud.dismissFail();
+    G.audio.play('menu_click');
+    const w = def.where ? def.where() : null;
+    if (w) G.game.teleport(w.x + 2.5, w.z + 2.5, 0);
+    this.clearStarts();
+    G.game.suppressPause = false;
+    this.start(def, { where: w });
+    G.input.lock();
+    return true;
+  }
 
   async start(def, opts = {}) {
     if (this.active) return;
+    if (this.lastFailed) { G.hud.dismissFail(); this.lastFailed = null; }
     const ent = this.startMarkers.get(def.id); let giverPed = ent ? ent.ped : null; if (ent) ent.ped = null;
     this.clearStarts();
     if (!giverPed && def.giver && opts.where) giverPed = this.spawnGiver(def, opts.where);
@@ -352,7 +371,12 @@ export class MissionManager {
       if (nx) G.hud.notify('Next mission: ' + nx.title + ' — follow the gold marker');
       if (G.game.canSave()) { await sleep(2500); if (G.game.state === 'play' && G.game.canSave() && !G.game.inCutscene) { G.game.save(); G.hud.notify('Game saved'); } }
     } else {
-      if (failReason !== null) { G.audio.play('mission_fail'); G.hud.missionFailed(failReason); if (def.giver) G.hud.notify('Go back to ' + (def.giverName || def.giver[0].toUpperCase() + def.giver.slice(1)) + ' to try again'); }
+      if (failReason !== null) {
+        G.audio.play('mission_fail'); G.hud.missionFailed(failReason);
+        this.lastFailed = def;
+        if (G.input.locked) { G.game.suppressPause = true; G.input.unlock(); setTimeout(() => { G.game.suppressPause = false; }, 600); }
+        if (def.giver) G.hud.notify('Go back to ' + (def.giverName || def.giver[0].toUpperCase() + def.giver.slice(1)) + ' to try again');
+      }
       r.cleanup(); G.hud.objective('');
       if (this.active === r) { this.active = null; G.missionDensity = 1; this.blocksShops = false; this.restoreAmbient(); }
       if (def.onFail) { try { def.onFail(this); } catch (e) { console.error(e); } }

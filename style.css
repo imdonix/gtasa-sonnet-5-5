@@ -124,4 +124,8 @@ table.tbl { border-collapse: collapse; font-size: 16px; } table.tbl td { padding
 
 #cineBot span { position: absolute; right: 22px; top: 10px; font-family: var(--text); font-size: 14px; color: rgba(255,255,255,.65); letter-spacing: 1px; }
 #mp.fail { top: 64%; } #mp.fail .t { font-size: 54px; } #mp.fail .s { font-size: 26px; margin-top: 4px; }
+#mp .fb { margin-top: 18px; display: flex; gap: 16px; justify-content: center; align-items: center; }
+#mp .mretry { pointer-events: auto; cursor: pointer; font-family: var(--ui); font-size: 24px; letter-spacing: 1px; padding: 12px 30px; background: rgba(15,15,15,.9); border: 2px solid #d83a3a; color: #ffdede; text-transform: uppercase; border-radius: 5px; transition: all .12s; text-shadow: none; }
+#mp .mretry:hover { background: #d83a3a; color: #fff; border-color: #fff; transform: scale(1.05); }
+#mp .fb .hint { font-family: var(--text); font-size: 16px; color: #aaa; }
 #controlsPanel .box { padding: 12px 24px 16px; } #controlsPanel h1 { font-size: 32px !important; margin-bottom: 6px; } #controlsPanel h2 { margin: 0 0 6px; font-size: 22px; } #controlsPanel table.tbl { font-size: 14px; } #controlsPanel table.tbl td { padding: 2px 16px 2px 0; }

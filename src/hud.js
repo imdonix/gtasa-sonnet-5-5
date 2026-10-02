@@ -94,8 +94,17 @@ export class HUD {
   counter(text) { const c = this.e.counter; if (text == null) c.style.display = 'none'; else { c.style.display = 'block'; c.innerHTML = text; } }
   big(text, cls, sub, dur = 0) { const b = this.e.big; b.className = 'shadowed ' + (cls || ''); b.textContent = text; b.style.opacity = 1; this.e.bigSub.textContent = sub || ''; this.e.bigSub.style.opacity = sub ? 1 : 0; if (dur) setTimeout(() => this.hideBig(), dur * 1000); }
   hideBig() { this.e.big.style.opacity = 0; this.e.bigSub.style.opacity = 0; }
-  missionPassed(title, reward, extra) { const m = this.e.mp; m.className = 'shadowed'; m.innerHTML = `<div class="t">MISSION PASSED!</div><div class="s">${title}</div><div class="r">${reward ? fmtMoney(reward) : ''}</div>${extra ? `<div class="s" style="font-size:24px;color:#ddd">${extra}</div>` : ''}`; m.style.opacity = 1; setTimeout(() => m.style.opacity = 0, 5200); }
-  missionFailed(reason) { const m = this.e.mp; m.className = 'shadowed fail'; m.innerHTML = `<div class="t">MISSION FAILED!</div><div class="s">${reason || ''}</div>`; m.style.opacity = 1; setTimeout(() => m.style.opacity = 0, 4200); }
+  missionPassed(title, reward, extra) { clearTimeout(this._failT); const m = this.e.mp; m.className = 'shadowed'; m.innerHTML = `<div class="t">MISSION PASSED!</div><div class="s">${title}</div><div class="r">${reward ? fmtMoney(reward) : ''}</div>${extra ? `<div class="s" style="font-size:24px;color:#ddd">${extra}</div>` : ''}`; m.style.opacity = 1; setTimeout(() => m.style.opacity = 0, 5200); }
+  missionFailed(reason) {
+    const m = this.e.mp; m.className = 'shadowed fail';
+    m.innerHTML = `<div class="t">MISSION FAILED!</div><div class="s">${reason || ''}</div><div class="fb"><button class="mretry" id="mpRetry">Retry mission</button><span class="hint">restarts from the beginning</span></div>`;
+    m.style.opacity = 1;
+    clearTimeout(this._failT);
+    this._failT = setTimeout(() => { m.style.opacity = 0; if (G.missions) G.missions.clearRetry(); }, 14000);
+    const b = $('mpRetry');
+    if (b) b.onclick = () => { if (G.missions && G.missions.retryLast()) clearTimeout(this._failT); };
+  }
+  dismissFail() { clearTimeout(this._failT); this.e.mp.style.opacity = 0; }
   missionTitle(text) { const m = this.e.mtitle; m.textContent = text; m.style.opacity = 1; setTimeout(() => m.style.opacity = 0, 3800); }
   fade(to, ms = 800) { const f = this.e.fade; f.style.transition = `opacity ${ms}ms`; f.style.opacity = to; }
   radioPopup(name, track) { const r = this.e.radioPop; r.querySelector('.n').textContent = name; r.querySelector('.t').textContent = track || ''; r.style.opacity = 1; this.radioT = 3.2; }
