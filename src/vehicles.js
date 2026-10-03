@@ -256,8 +256,8 @@ export class Vehicle {
     } else {
       this.submerged = 0;
       const yg = gAvg + R;
+      const prevG = this.groundY; this.groundY = yg; // track every frame: after a jump, groundY must be the terrain just landed on (not the takeoff height), else rise spikes and the launch check catapults the car
       if (!this.airborne) {
-        const prevG = this.groundY; this.groundY = yg;
         const rise = clamp((yg - prevG) / Math.max(dt, 1e-4), -20, 20);
         // launch off a crest: we were climbing and the ground now falls away faster than a ballistic path
         if ((this._lastVy || 0) > 2.0 && rise < this._lastVy - 1.8 && this.totalSpeed > 8) { this.airborne = true; this.vy = this._lastVy; this.y += this.vy * dt; }
