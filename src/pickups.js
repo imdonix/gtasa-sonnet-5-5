@@ -117,7 +117,15 @@ export class Blips {
   constructor() { this.list = []; }
   add(o) { const b = { x: 0, z: 0, color: '#ffffff', icon: 'dot', label: '', flash: false, radius: 0, entity: null, priority: 1, route: false, ...o }; this.list.push(b); return b; }
   remove(b) { const i = this.list.indexOf(b); if (i >= 0) this.list.splice(i, 1); }
-  update() { for (const b of this.list) if (b.entity) { b.x = b.entity.x; b.z = b.entity.z; } }
+  update() {
+    for (const b of this.list) {
+      if (!b.entity) continue;
+      b.x = b.entity.x; b.z = b.entity.z;
+      const e = b.entity;
+      // kill targets drop off radar and map the moment they die (or their vehicle is wrecked / removed)
+      b.hidden = !!(e.dead || e.removeMe || e.wrecked);
+    }
+  }
 }
 
 export class Markers {
@@ -146,7 +154,7 @@ export class Markers {
     this.t += dt; const pl = G.player;
     for (let i = this.list.length - 1; i >= 0; i--) {
       const m = this.list[i]; if (m.dead) { this.list.splice(i, 1); continue; }
-      if (m.entity) { m.x = m.entity.x; m.z = m.entity.z; m.group.position.set(m.x, (m.entity.y || 0) + (m.entity.vehicle ? 0 : 0), m.z); if (m.blip) { m.blip.x = m.x; m.blip.z = m.z; } }
+      if (m.entity) { m.x = m.entity.x; m.z = m.entity.z; m.group.position.set(m.x, (m.entity.y || 0) + (m.entity.vehicle ? 0 : 0), m.z); if (m.blip) { m.blip.x = m.x; m.blip.z = m.z; const e = m.entity; m.blip.hidden = !!(e.dead || e.removeMe || e.wrecked); } }
       m.mat.uniforms.uT.value = this.t; if (m.group.userData.arrow) { const a = m.group.userData.arrow; a.rotation.y += dt * 2.5; a.position.y = 3.3 + Math.sin(this.t * 3) * 0.25; }
       if (!pl || pl.dead || pl.enterT > 0) continue;
       const px = pl.vehicle ? pl.vehicle.x : pl.x, pz = pl.vehicle ? pl.vehicle.z : pl.z;
