@@ -214,10 +214,14 @@ export class Combat {
       if (!p.dead) p.knockdown(1.6);
     }
     for (const v of G.vehicles.list) {
-      if (v === o.vehicle || v.isHeli) continue;
+      if (v === o.vehicle) continue;
       const d = Math.hypot(v.x - x, v.z - z); if (d > R + v.radius) continue;
+      // a blast only reaches a helicopter if it goes off near its altitude (so you must hit it)
+      if (v.isHeli && Math.abs(v.y - y) > r + 4) continue;
       const f = clamp(1 - d / (R + v.radius), 0, 1);
       const dx = (v.x - x) / (d || 1), dz = (v.z - z) / (d || 1);
+      // one rocket always brings a helicopter down
+      if (v.isHeli && o.rocket) { v.damage(1e6, { source: src, explosion: true, instant: true }); continue; }
       v.damage(dmg * f * 2.6, { source: src, explosion: true });
       const m = 1500 / v.phys.mass;
       v.vx += dx * 14 * f * m; v.vz += dz * 14 * f * m; if (!v.wrecked && f > 0.3) { v.vy = 3 + 4 * f; v.airborne = true; v.yawRate += (Math.random() - 0.5) * 3 * f; }
@@ -263,7 +267,7 @@ export class Combat {
       }
       if (hit) {
         if (p.kind === 'molotov') { this.startFire(p.x, p.z, 4.5, 10, p.owner); G.audio && G.audio.play('glass_break', { pos: p }); G.audio && G.audio.play('fire_whoosh', { pos: p }); this.noise(p.x, p.z, 60, p.owner, 'explosion'); if (G.police) G.police.onExplosion(p.x, p.z, p.owner); }
-        else this.explode(p.x, p.y, p.z, p.kind === 'rocket' ? 9.5 : 7, p.kind === 'rocket' ? 520 : 380, { source: p.owner });
+        else this.explode(p.x, p.y, p.z, p.kind === 'rocket' ? 9.5 : 7, p.kind === 'rocket' ? 520 : 380, { source: p.owner, rocket: p.kind === 'rocket' });
         G.scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); this.projectiles.splice(i, 1);
       }
     }
