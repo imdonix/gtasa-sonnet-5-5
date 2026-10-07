@@ -225,7 +225,7 @@ export class Runner {
 // ------------------------------------------------------------------------------------------------ Manager
 export class MissionManager {
   constructor() {
-    this.defs = []; this.done = new Set(); this.active = null; this.flags = {}; this.startMarkers = new Map(); this.blocksShops = false; this.t = 0; this.lastFailed = null;
+    this.defs = []; this.done = new Set(); this.active = null; this.flags = {}; this.startMarkers = new Map(); this.blocksShops = false; this.t = 0; this.lastFailed = null; this.noStartUntil = 0;
     this.loadStory();
     // Story fights must not bring the police in on their own: no crime raises stars during a
     // mission, so heavy gunfights (turf wars, raids) stay star-free. Heat stays fully scripted
@@ -287,8 +287,8 @@ export class MissionManager {
     const next = this.nextMain(); const ne = next && this.startMarkers.get(next.id);
     if (ne) { ne.blip.nextQuest = true; ne.marker.nextQuest = true; }
   }
-  tryStart(def) { if (this.active || G.game.state !== 'play') return; if (def.canStart && !def.canStart()) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify(def.cantStart || 'You cannot start this yet'); } return; } if (G.police.stars > 0) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify('Lose the cops first'); } return; } this.start(def); }
-  abortAll() { if (this.active) { this.active.ended = true; this.active.abortAll(new MissionAbort()); this.active.cleanup(); this.active = null; } G.game.inCutscene = false; G.camera && G.camera.endCine(); if (G.hud) { G.hud.setCinematic(false); G.hud.fade(0, 100); G.hud.clearSubs(); } G.player.controlEnabled = true; G.game.timeScale = 1; G.missionDensity = 1; this.blocksShops = false; this.restoreAmbient(); }
+  tryStart(def) { if (this.active || G.game.state !== 'play') return; if (G.time < this.noStartUntil) return; if (def.canStart && !def.canStart()) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify(def.cantStart || 'You cannot start this yet'); } return; } if (G.police.stars > 0) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify('Lose the cops first'); } return; } this.start(def); }
+  abortAll() { if (this.active) { this.active.ended = true; this.active.abortAll(new MissionAbort()); this.active.cleanup(); this.active = null; } this.noStartUntil = G.time + 0.6; G.game.inCutscene = false; G.camera && G.camera.endCine(); if (G.hud) { G.hud.setCinematic(false); G.hud.fade(0, 100); G.hud.clearSubs(); } G.player.controlEnabled = true; G.game.timeScale = 1; G.missionDensity = 1; this.blocksShops = false; this.restoreAmbient(); }
   onPlayerFailed(reason) { if (this.active && !this.active.ended) { this.active.abortAll(new MissionFail(reason)); } }
 
   spawnGiver(def, where) {
@@ -383,7 +383,7 @@ export class MissionManager {
       if (def.onFail) { try { def.onFail(this); } catch (e) { console.error(e); } }
       G.game.timeScale = G.game.state === 'play' ? 1 : G.game.timeScale;
       if (failReason !== null) { G.police.clear(); }
-      await sleep(400); this.refreshStarts();
+      await sleep(400); this.noStartUntil = G.time + 1.2; this.refreshStarts();
     }
   }
 

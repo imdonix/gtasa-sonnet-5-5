@@ -202,8 +202,11 @@ export class Places {
   }
   // replace the solid shop collider with a footprint that leaves the bay corridor open
   carveGarage(s, g) {
-    const W = G.world, obb = s.l.building && s.l.building.obb; if (!W || !obb) return;
+    const W = G.world, bld = s.l.building, obb = bld && bld.obb; if (!W || !obb) return;
     W.removeCollider(obb); const i = W.placement.colliders.indexOf(obb); if (i >= 0) W.placement.colliders.splice(i, 1);
+    // stop the generic roof-footprint collider from re-adding a solid box over the carved bay.
+    // b.obb stays as the reserved footprint so placement queries (propClear / walkSpot) still see the lot.
+    bld._solidDone = true;
     const mk = (cx, cz, hx, hz) => { const p = g.lp(cx, cz); return { x: p.x, z: p.z, hw: hx, hd: hz, yaw: s.l.yaw, h: obb.h, kind: 'garage' }; };
     const { hw, hd, zWall, zFront, bayHw } = g;
     const pieces = [

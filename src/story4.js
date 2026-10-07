@@ -571,7 +571,7 @@ export const STORY4 = [
       r.supply({ ammo: { ak47: 260, smg: 240, shotgun: 60, pistol: 100, grenade: 4 }, equip: 'ak47', hp: 100, armor: 80 });
       const cody = ally(r, 'cody', ray.x + 2, ray.z, { weapon: 'smg', health: 200 });
       const dre = ally(r, 'dre', ray.x - 2, ray.z, { weapon: 'ak47', health: 220 });
-      squad(r, [cody, dre]); r.keepAlive(cody, 'Cody'); r.keepAlive(dre, 'Dre');
+      squad(r, [cody, dre]); r.keepAlive(cody, 'Cody');
       const ks = kerbSpot({ x: home.x, z: home.z }, 1, 100);
       const van = r.car('van', ks.x, ks.z, ks.yaw, { color: 0x1c2a22 }); van.name = 'Workhorse'; van.health = van.maxHealth = 1800;
       await r.enterVehicle(van, { text: 'Take the wheel of the <b>van</b> (F)', label: 'Van' });
@@ -620,7 +620,7 @@ export const STORY4 = [
         ['Ray', "Cody and Dre ride with you. Go up there and end it — for Marcus, for Nia, for every corner she bought.", 6.2],
         ['Jay', "This is the last one. Let's finish it.", 2.8]
       ], { fadeIn: false });
-      squad(r, [cody, dre]); r.keepAlive(cody, 'Cody'); r.keepAlive(dre, 'Dre');
+      squad(r, [cody, dre]); r.keepAlive(cody, 'Cody');
       const ks = kerbSpot({ x: home.x, z: home.z }, 1, 100);
       const van = r.car('van', ks.x, ks.z, ks.yaw, { color: 0x1c2a22 }); van.name = 'Workhorse'; van.health = van.maxHealth = 2200;
       await r.enterVehicle(van, { text: 'Take the wheel of the <b>van</b> (F)', label: 'Van' });

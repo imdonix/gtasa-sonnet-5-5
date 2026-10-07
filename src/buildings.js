@@ -92,6 +92,7 @@ class GB {
     this.rng = rng;
     this.p = []; this.n = []; this.uv = []; this.c = []; this.i = [];
     this.nv = 0;
+    this._roofs = [];   // footprints of the building's own roofs (used for collision, so parking lots stay walkable)
   }
   vtx(x, y, z, nx, ny, nz, u, v, c) {
     this.p.push(x, y, z); this.n.push(nx, ny, nz); this.uv.push(u, v); this.c.push(c[0], c[1], c[2]);
@@ -1339,6 +1340,7 @@ function parapetLoop(gb, pts, y, ph, t, wt, col, o = {}) {
 }
 /** flat roof w/ parapet; returns top y.  o.poly: outline (for non rectangular), o.decks: list of [x0,z0,x1,z1] */
 function roofFlat(gb, x0, z0, x1, z1, y, o = {}) {
+  gb._roofs.push([x0, z0, x1, z1]);
   const ph = o.ph ?? 0.55, t = o.t ?? 0.24, wt = o.wall || 'stucco', col = o.col || WHITE;
   const dk = o.deck || [0.62, 0.62, 0.6];
   const decks = o.decks || [[x0, z0, x1, z1]];
@@ -1348,6 +1350,7 @@ function roofFlat(gb, x0, z0, x1, z1, y, o = {}) {
 }
 /** roof over wall-top rect.  hip(k=1)/gable.  y = wall top, rise = ridge height above y, ov = overhang */
 function roofPitched(gb, x0, z0, x1, z1, y, rise, ov, tile, col, o = {}) {
+  gb._roofs.push([x0, z0, x1, z1]);
   const gable = !!o.gable;
   let alongX;
   if (o.ridge === 'x') alongX = true; else if (o.ridge === 'z') alongX = false; else alongX = (x1 - x0) > (z1 - z0);
@@ -1389,6 +1392,7 @@ function roofPitched(gb, x0, z0, x1, z1, y, rise, ov, tile, col, o = {}) {
 }
 /** thin sloped slab (shed roof / awning-ish).  low edge on side 'face' (0:+z,1:+x,2:-z,3:-x) */
 function roofShed(gb, x0, z0, x1, z1, yLow, yHigh, face, tile, col, o = {}) {
+  gb._roofs.push([x0, z0, x1, z1]);
   const th = o.th ?? 0.22; const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
   // corners depending on face: low side at the face
   const H = (x, z) => {
@@ -2990,7 +2994,15 @@ export function generateBuilding(spec) {
     const x = p[i], y = p[i + 1], z = p[i + 2];
     if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (z < mnz) mnz = z; if (z > mxz) mxz = z; if (y < mny) mny = y; if (y > mxy) mxy = y;
   }
-  g.userData = { type, bounds: { w: mxx - mnx, d: mxz - mnz, h: mxy }, roofY: res.roofY ?? mxy, bbox: { minX: mnx, maxX: mxx, minZ: mnz, maxZ: mxz, minY: mny, maxY: mxy }, tris: gb.i.length / 3 };
+  // collision footprint: union of the building's own roofs. The parking lot / lawn pads are not roofs,
+  // so they get no collider and stay walkable/drivable.
+  let solid = null;
+  if (gb._roofs.length) {
+    let a = 1e9, b = -1e9, c = 1e9, e = -1e9;
+    for (const r of gb._roofs) { if (r[0] < a) a = r[0]; if (r[2] > b) b = r[2]; if (r[1] < c) c = r[1]; if (r[3] > e) e = r[3]; }
+    if (b > a && e > c) solid = { minX: a, maxX: b, minZ: c, maxZ: e };
+  }
+  g.userData = { type, bounds: { w: mxx - mnx, d: mxz - mnz, h: mxy }, roofY: res.roofY ?? mxy, bbox: { minX: mnx, maxX: mxx, minZ: mnz, maxZ: mxz, minY: mny, maxY: mxy }, solid, tris: gb.i.length / 3 };
   g.computeBoundingSphere(); g.computeBoundingBox();
   return g;
 }

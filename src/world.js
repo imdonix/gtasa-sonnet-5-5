@@ -159,6 +159,7 @@ export class World {
       for (let i = 0; i < bl.length; i++) {
         const b = bl[i];
         const geo = this._buildingGeo(b);
+        this._refineCollider(b, geo);
         const tr = geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
         const tall = b.h >= 38 || b.type === 'stadium' || b.type === 'terminal' || b.type === 'hangar' || b.type === 'city_hall';     // silhouettes stay detailed at range
         if (b.y - b.hmin > 1.1) { const pod = this._podium(b); const it = { geo: pod, x: b.x, y: 0, z: b.z, yaw: b.yaw }; (tall ? talls : items).push(it); }
@@ -264,6 +265,21 @@ export class World {
   }
   _buildPropMesh(ch) { const it = this._propJob(ch); while (!it.next().done); }
   _initFlatUV() { if (this._flatUV) return; const t = this.mods.buildings && this.mods.buildings.getFacadeAtlas ? this.mods.buildings.getFacadeAtlas().tiles.flat : null; this._flatUV = t ? [(t.u0 + t.u1) / 2, (t.v0 + t.v1) / 2] : [0.47, 0.085]; }
+
+  // Once a building's geometry is generated we know its true solid footprint (its roofs), so replace the
+  // full reserved-footprint collider with that. Parking lots / lawns are part of the reserved footprint
+  // but not of the building, so they stop being invisible walls.
+  _refineCollider(b, geo) {
+    if (b._solidDone) return; b._solidDone = true;
+    const s = geo && geo.userData && geo.userData.solid; if (!s || !b.obb) return;
+    const w = s.maxX - s.minX, d = s.maxZ - s.minZ; if (!(w > 0.6 && d > 0.6)) return;
+    const old = b.obb;
+    this.removeCollider(old);
+    const i = this.placement.colliders.indexOf(old); if (i >= 0) this.placement.colliders.splice(i, 1);
+    const lx = (s.minX + s.maxX) / 2, lz = (s.minZ + s.maxZ) / 2, cs = Math.cos(b.yaw), sn = Math.sin(b.yaw);
+    const nobb = { x: b.x + lx * cs + lz * sn, z: b.z - lx * sn + lz * cs, hw: w / 2, hd: d / 2, yaw: b.yaw, h: b.h, kind: 'building', ref: b };
+    b.obb = nobb; this.placement.colliders.push(nobb); this._indexCollider(nobb);
+  }
 
   // concrete podium filling the gap under a building on a slope (the generated foundation skirt only goes 2 m down)
   _podium(b) {
