@@ -93,35 +93,52 @@ function pilotHeli(r, v, o = {}) {
   });
 }
 
-// One leg of the surveillance network: follow a target car from near `from` to near `to`,
-// staying in a comfortable band (16-95 m). Too far for too long or too close loses the tail.
+// Spawn a parked surveillance target near a district. It is `ahead` metres down the lane so it
+// never lands on top of the player's car. Called before the cutscene so the camera can film it.
+function spawnTailTarget(r, from, name, o = {}) {
+  const fn = G.map.nearestRoad(from.x, from.z, 300); const fp = fn ? { x: fn.x, z: fn.z } : from;
+  const sp = laneSpot(fp, 1, 240);
+  const ahead = o.ahead || 0;
+  const x = sp.x + Math.sin(sp.yaw) * ahead, z = sp.z + Math.cos(sp.yaw) * ahead;
+  const car = r.car(o.type || 'coupe', x, z, sp.yaw, { color: o.color ?? 0x26262e }); car.name = name;
+  const drv = r.ped({ x, z, role: 'script', appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), name, health: 150 });
+  drv.enterVehicle(car, 0, true);
+  const b = r.blip({ entity: car, color: '#ff5090', label: name, flash: true, priority: 5 }); car.blipObj = b;
+  return { car, drv, sp, b };
+}
+
+// One leg of the surveillance network: the target pulls away and drives to `to` while the player
+// keeps it in a comfortable band (16-140 m). A short grace at the start lets the player react.
 async function tailSegment(r, from, to, name, o = {}) {
   const pl = G.player;
-  const fn = G.map.nearestRoad(from.x, from.z, 300); const fp = fn ? { x: fn.x, z: fn.z } : from;
+  const tgt = o.target || spawnTailTarget(r, from, name, o);
   const tn = G.map.nearestRoad(to.x, to.z, 300); const tp = tn ? { x: tn.x, z: tn.z } : to;
-  const sp = laneSpot(fp, 1, 240);
-  const car = r.car(o.type || 'coupe', sp.x, sp.z, sp.yaw, { color: o.color ?? 0x26262e }); car.name = name;
-  const drv = r.ped({ x: sp.x, z: sp.z, role: 'script', appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), name, health: 150 });
-  drv.enterVehicle(car, 0, true);
-  const ai = new DriverAI(car, 'goto', { dest: { x: tp.x, z: tp.z }, cruise: o.cruise ?? 17, stopDist: 14 });
-  const b = r.blip({ entity: car, color: '#ff5090', label: name, flash: true, priority: 5 }); car.blipObj = b;
+  const ai = new DriverAI(tgt.car, 'idle', {});
+  let started = false, waitT = o.waitT ?? 0;
+  const startAi = () => { if (started) return; started = true; ai.setMode('goto', { dest: { x: tp.x, z: tp.z }, cruise: o.cruise ?? 17, stopDist: 14 }); };
+  if (waitT <= 0) startAi();
   let done = false, lost = 0, close = 0;
-  const tw = { fn: () => drv.dead || car.wrecked, reason: name + ' was taken out.' };
+  const tw = { fn: () => tgt.drv.dead || tgt.car.wrecked, reason: name + ' was taken out.' };
   r.watchers.push(tw);
   r.tick(dt => {
     if (done) return;
-    const pv = pl.vehicle || pl; const d = Math.hypot(pv.x - car.x, pv.z - car.z);
-    G.hud.counter(`Tailing ${name} — ${Math.round(d)} m (keep 16–95)`);
-    if (d > 120) lost += dt; else lost = Math.max(0, lost - dt * 2);
-    if (d < 11 && car.totalSpeed > 3) close += dt; else close = Math.max(0, close - dt);
-    if (lost > 8) r.abortAll(FAIL('You lost ' + name + '.'));
+    if (!started) {
+      waitT -= dt; G.hud.counter(`Keeping an eye on ${name}…`);
+      if (waitT <= 0) startAi();
+      return;
+    }
+    const pv = pl.vehicle || pl; const d = Math.hypot(pv.x - tgt.car.x, pv.z - tgt.car.z);
+    G.hud.counter(`Tailing ${name} — ${Math.round(d)} m (keep 16–140)`);
+    if (d > 140) lost += dt; else lost = Math.max(0, lost - dt * 2);
+    if (d < 11 && tgt.car.totalSpeed > 3) close += dt; else close = Math.max(0, close - dt);
+    if (lost > 10) r.abortAll(FAIL('You lost ' + name + '.'));
     if (close > 5) r.abortAll(FAIL(name + ' made you.'));
-    if (ai.arrived || (car.totalSpeed < 0.6 && dist2(car.x, car.z, tp.x, tp.z) < 45 * 45)) done = true;
+    if (ai.arrived || (tgt.car.totalSpeed < 0.6 && dist2(tgt.car.x, tgt.car.z, tp.x, tp.z) < 45 * 45)) done = true;
   });
   await r.wait(() => done);
   r.watchers = r.watchers.filter(w => w !== tw);
-  r.removeBlip(b); car.blipObj = null; if (ai) ai.setMode('idle'); G.hud.counter(null);
-  return { car, drv };
+  r.removeBlip(tgt.b); tgt.car.blipObj = null; ai.setMode('idle'); G.hud.counter(null);
+  return { car: tgt.car, drv: tgt.drv };
 }
 
 export const STORY4 = [
@@ -188,7 +205,7 @@ export const STORY4 = [
       await r.wait(() => lt.dead);
       r.removeBlip(lb);
       const px = lt.x, pz = lt.z;
-      await new Promise(res => { r.pickup('tag', px, pz, { radius: 2.4, onCollect: () => res(true) }); r.objective("Grab the lieutenant's <b>phone</b>"); r.blip({ x: px, z: pz, color: '#ff4fe0', label: 'Phone', flash: true, priority: 5 }); });
+      await new Promise(res => { r.pickupItem('tag', px, pz, { radius: 2.4, onCollect: () => res(true) }, { color: '#ff4fe0', label: 'Phone', flash: true, priority: 5 }); r.objective("Grab the lieutenant's <b>phone</b>"); });
       await r.dialogue([
         ['Tee', "His last calls all go to one number. A fixer. The account name: Marsh — Wexler's head of security.", 5.8],
         ['Ray', "Then Marsh is the door to Wexler. Rest up. Tomorrow we start pulling it open.", 5]
@@ -327,10 +344,10 @@ export const STORY4 = [
         ['Hollis', "They watch the marina. The moment you have it, they'll know.", 4.4]
       ]);
       r.supply({ ammo: { pistol: 60, smg: 120 }, hp: 100, armor: 40 });
-      r.blip({ x: wp.x, z: wp.z, color: '#39c4d8', label: 'Wreck', flash: true, priority: 5 });
+      const wreckBlip = r.blip({ x: wp.x, z: wp.z, color: '#39c4d8', label: 'Wreck', flash: true, priority: 5 });
       G.hud.notify('Water ahead — hold forward to swim.');
       await r.goto(wp, { mode: 'any', radius: 3.6, text: 'Swim to the <b>wreck marker</b>', label: 'Wreck', color: 0x39c4d8, blipColor: '#39c4d8' });
-      await new Promise(res => { r.pickup('tag', wp.x, wp.z, { y: 0.2, radius: 5, onCollect: () => res(true) }); r.objective('Grab the <b>ledger case</b>'); });
+      await new Promise(res => { r.pickup('tag', wp.x, wp.z, { y: 0.2, radius: 5, onCollect: () => { r.removeBlip(wreckBlip); res(true); } }); r.objective('Grab the <b>ledger case</b>'); });
       r.speak('Hollis', "Got it? Now swim — they saw you!", 3.2);
       // pier shooters + land chase
       G.police.setStars(2);
@@ -445,7 +462,7 @@ export const STORY4 = [
       const foes = [ld, lg, ...f1.peds, ...f2.peds].filter(p => !p.dead);
       if (foes.length) await r.killAll(foes, { text: 'Eliminate the <b>escorts</b>', label: 'Escorts' });
       r.speak('Cody', 'The books are in the back. Grab them!', 2.8);
-      await new Promise(res => { r.pickup('tag', lead.x + 1, lead.z, { radius: 3.2, onCollect: () => res(true) }); r.objective('Grab the <b>ledger</b>'); r.blip({ x: lead.x + 1, z: lead.z, color: '#40ff80', label: 'Ledger', flash: true, priority: 5 }); });
+      await new Promise(res => { r.pickupItem('tag', lead.x + 1, lead.z, { radius: 3.2, onCollect: () => res(true) }, { color: '#40ff80', label: 'Ledger', flash: true, priority: 5 }); r.objective('Grab the <b>ledger</b>'); });
       G.police.setStars(3);
       r.speak('Cody', 'Airport security called it in! Get us home!', 3.2);
       await r.goto(home, { mode: 'vehicle', radius: 8, text: 'Bring the ledger to <b>Grove Street</b>', label: 'Home', color: 0xffd040, blipColor: '#ffd040' });
@@ -471,18 +488,30 @@ export const STORY4 = [
       ]);
       r.supply({ ammo: { pistol: 60, smg: 120 }, hp: 100, armor: 40 });
       const segs = [
-        { from: D('Ganton') || D('Jefferson'), to: D('Idlewood') || D('Willowfield'), name: 'Fisk' },
-        { from: D('Idlewood') || D('Willowfield'), to: D('Market') || D('Commerce'), name: 'Dandy' },
-        { from: D('Market') || D('Commerce'), to: D('Pershing Square') || D('Downtown Financial'), name: 'Marsh' }
+        { from: D('Ganton') || D('Jefferson'), to: D('Idlewood') || D('Willowfield'), name: 'Fisk', area: 'Ganton' },
+        { from: D('Idlewood') || D('Willowfield'), to: D('Market') || D('Commerce'), name: 'Dandy', area: 'Idlewood' },
+        { from: D('Market') || D('Commerce'), to: D('Pershing Square') || D('Downtown Financial'), name: 'Marsh', area: 'Market' }
       ];
       const ks = kerbSpot({ x: tee.x, z: tee.z }, 1, 100);
       const car = r.car('sports', ks.x, ks.z, ks.yaw, { color: 0x2a2a34 }); car.name = 'Ghost'; car.locked = false;
       r.blip({ entity: car, color: '#40ff80', label: 'Ghost', flash: true, priority: 4 });
       await r.enterVehicle(car, { text: 'Get in the <b>Ghost</b> (F)', label: 'Ghost' });
+      // drive to the first stakeout, then the tail begins (so it can't start while you are still across town)
+      const first = segs[0];
+      const fRoad = G.map.nearestRoad(first.from.x, first.from.z, 300) || first.from;
+      const stakeout = laneSpot(fRoad, 1, 240);
+      await r.goto(stakeout, { mode: 'vehicle', radius: 16, text: `Drive to the <b>stakeout</b> in ${first.area}`, label: 'Stakeout', color: 0xff5090, blipColor: '#ff5090', arrow: false });
+      const tgt0 = spawnTailTarget(r, first.from, first.name, { ahead: 12 });
+      await r.cutscene([
+        shot({ x: tgt0.car.x + 10, z: tgt0.car.z + 8, h: 3 }, { x: tgt0.car.x, z: tgt0.car.z, h: 1.1 }, 5, { fov: 42 }),
+        shot({ x: car.x + 8, z: car.z + 6, h: 2.2 }, { x: tgt0.car.x, z: tgt0.car.z, h: 1.1 }, 4, { fov: 46 })
+      ], [
+        ['Tee', "There's Fisk — our first one. Keep your distance and keep him on screen.", 4.8]
+      ], { fadeIn: false });
       for (let i = 0; i < segs.length; i++) {
         const s = segs[i]; if (!s.from || !s.to) { r.speak('Tee', 'I lost the feed on that one.', 2.6); continue; }
-        r.speak('Tee', `Target ${i + 1}: ${s.name}. Stay back, keep them on screen.`, 3.4);
-        await tailSegment(r, s.from, s.to, s.name, { cruise: 16 + i * 2 });
+        if (i > 0) r.speak('Tee', `Next one: ${s.name}. Watch for the pickup.`, 3.4);
+        await tailSegment(r, s.from, s.to, s.name, { cruise: 16 + i * 2, target: i === 0 ? tgt0 : null, waitT: i === 0 ? 0.5 : 0, ahead: 10 });
         await r.sleep(0.8);
         r.speak(s.name, i === 0 ? '...tell the boss the books are clean.' : i === 1 ? '...move it to the vault tonight.' : "...the vault's ready. No names on the door.", 3.2);
         await r.sleep(1.2);
