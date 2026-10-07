@@ -94,7 +94,7 @@ export const STORY1 = [
       r.speak('Jay', 'Time to see what these guys are made of.', 3);
       await r.killAll(enemies, { text: 'Take out the <b>Violet Kings</b>' });
       const cs = besideDoor('vk_base', 0, 2.4) || { x: base.x, z: base.z };
-      const cash = await new Promise(res => { const cp = r.pickup('cash', cs.x, cs.z, { amount: 450, onCollect: () => res(true) }); r.objective('Grab the <b>cash</b> they left behind'); r.blip({ x: cs.x, z: cs.z, color: '#4fd36b', label: 'Cash' }); });
+      const cash = await new Promise(res => { r.pickupItem('cash', cs.x, cs.z, { amount: 450, onCollect: () => res(true) }, { color: '#4fd36b', label: 'Cash' }); r.objective('Grab the <b>cash</b> they left behind'); });
       G.hud.notify('Nicely done. Heal with food: Burger Bonanza and Pizza Stack restore health.');
       await r.goto(ray, { mode: 'any', radius: 4.5, text: 'Return to <b>Ray</b> at Grove Street', label: 'Ray', blipColor: '#ffd040', color: 0xffd040, follow: false });
       await r.dialogue([['Ray', 'You still swing like a Mercer. The runner talked before he ran: a cop has been taking envelopes from Duke Price.', 5], ['Ray', "We'll work our way up. Step one, win the streets.", 3.4]]);
@@ -272,7 +272,7 @@ export const STORY1 = [
       const dropX = cour.x, dropZ = cour.z;
       await r.wait(() => cour.dead || cour.removeMe, { timeout: 40 }).catch(() => { });
       r.speak('Tee', 'He dropped it! Grab the phone!', 2.6);
-      await new Promise(res => { r.pickup('tag', dropX, dropZ, { onCollect: () => res(true), radius: 2.2 }); r.objective('Pick up <b>Nia\'s phone</b>'); r.blip({ x: dropX, z: dropZ, color: '#ff4fe0', label: 'Phone', flash: true, priority: 5 }); });
+      await new Promise(res => { r.pickupItem('tag', dropX, dropZ, { onCollect: () => res(true), radius: 2.2 }, { color: '#ff4fe0', label: 'Phone', flash: true, priority: 5 }); r.objective('Pick up <b>Nia\'s phone</b>'); });
       await r.wait(() => escort.peds.every(q => q.dead) || escort.v.wrecked || dist2(escort.v.x, escort.v.z, G.player.x, G.player.z) > 250 * 250, { timeout: 25 }).catch(() => { });
       await r.dialogue([['Tee', 'Got it? The phone has three weeks of voice notes and a ledger photo. Calloway\'s name is all over it.', 5.4], ['Tee', "Calloway runs Hollow Kings Records. The label is a laundromat. I'll dig. Come find me in Vinewood.", 5.2]]);
       r.reward(1900, 4);

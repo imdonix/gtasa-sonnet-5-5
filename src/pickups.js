@@ -64,7 +64,8 @@ export class Pickups {
       case 'star': if (G.police.stars <= 0) return; G.police.setStars(G.police.stars - 1); G.audio.play('pickup'); G.hud.notify('Police bribe: wanted level reduced'); break;
       case 'weapon': { const W = WEAPONS[p.weapon]; const had = pl.weapons[p.weapon]; pl.give(p.weapon, p.ammo || W.pack || 20, !had); G.audio.play('pickup'); G.hud.notify((had ? '' : 'Picked up ') + W.name + (W.melee ? '' : ' (+' + (p.ammo || W.pack) + ' ammo)')); G.hud.weaponChanged(); break; }
     }
-    if (p.onCollect) p.onCollect(p);
+    // the pickup always disappears, even if a mission's onCollect callback throws
+    if (p.onCollect) { try { p.onCollect(p); } catch (e) { console.error('pickup onCollect', e); } }
     if (p.respawn > 0) { const k = { kind: p.kind, x: p.x, z: p.z, o: { amount: p.amount, weapon: p.weapon, ammo: p.ammo, respawn: p.respawn, persistent: true, life: 1e9, y: p.y - 0.75 }, t: p.respawn }; this.respawnQueue.push(k); }
     this.remove(p);
   }

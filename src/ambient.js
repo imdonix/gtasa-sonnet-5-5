@@ -332,7 +332,7 @@ export class Ambient {
   cashTick() {
     const list = G.pickups.list; if (!list.length) return;
     for (const pk of list) {
-      if (pk.kind !== 'cash' || pk.dead || pk.life < 8) continue;
+      if (pk.kind !== 'cash' || pk.dead || pk.mission || pk.life < 8) continue;   // never grab a quest pickup
       if (pk.grabbed) { const g = pk.grabber; if (!g || g.dead || g.removeMe || !g.life || g.life.type !== 'goto') pk.grabbed = false; else continue; }
       let best = null, bd = 12 * 12;
       for (const p of G.peds.list) { if (p.dead || p.vehicle || p.isPlayer || p.mission || p.life || p.mode !== 'walk' || p.role !== 'civ') continue; const d2 = dist2(p.x, p.z, pk.x, pk.z); if (d2 < bd) { bd = d2; best = p; } }

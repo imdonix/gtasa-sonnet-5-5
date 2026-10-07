@@ -50,7 +50,15 @@ export class Runner {
   blip(o) { const b = G.blips.add({ priority: 3, ...o }); this.blips.push(b); return b; }
   removeBlip(b) { if (!b) return; G.blips.remove(b); const i = this.blips.indexOf(b); if (i >= 0) this.blips.splice(i, 1); }
   removeMarker(m) { if (!m) return; G.markers.remove(m); const i = this.markers.indexOf(m); if (i >= 0) this.markers.splice(i, 1); }
-  pickup(kind, x, z, o = {}) { this.guard(); const p = G.pickups.spawn(kind, x, z, { life: 1e9, ...o }); this.pickups.push(p); return p; }
+  pickup(kind, x, z, o = {}) { this.guard(); const p = G.pickups.spawn(kind, x, z, { life: 1e9, ...o }); p.mission = true; this.pickups.push(p); return p; }
+  // a quest item: a pickup plus a radar blip that disappears the moment it is collected
+  pickupItem(kind, x, z, o = {}, blipOpts) {
+    const p = this.pickup(kind, x, z, o);
+    const b = this.blip({ x, z, icon: 'dot', color: '#ff4fe0', label: 'Item', flash: true, priority: 5, ...(blipOpts || {}) });
+    const orig = p.onCollect;
+    p.onCollect = (pk) => { this.removeBlip(b); if (orig) orig(pk); };
+    return p;
+  }
   give(w, ammo = 0, equip = true) { G.player.give(w, ammo, equip); G.hud.weaponChanged(); }
   weapons(list) { for (const [w, a] of list) G.player.give(w, a, false); G.hud.weaponChanged(); }
   // make sure the player starts with a fair loadout: top ammo up to `ammo[weapon]` rounds, health >= hp, armor >= armor. Never takes anything away.
