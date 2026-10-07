@@ -2,7 +2,7 @@
 // safehouse save icon, hospitals/police blips, map pickups.
 import * as THREE from 'three';
 import { G } from './state.js';
-import { clamp, dist2, rrange, pick, lerp, lerpAngle, fmtMoney } from './util.js';
+import { clamp, pick } from './util.js';
 import { CLS } from './mapdata.js';
 import { Ped } from './peds.js';
 
@@ -51,7 +51,7 @@ function glowTexture() {
 export class Places {
   constructor() {
     this.shops = []; this.cool = 0; this.pns = []; this.homePanel = null;
-    this.busy = false; this.iconT = 0;
+    this.iconT = 0;
     const L = G.landmarks;
     const add = (id, opts) => { const l = L[id]; if (l) this.shops.push({ id, l, ...opts }); };
     for (const id of ['ammu_a', 'ammu_b', 'ammu_c']) add(id, { kind: 'ammu', blip: { color: '#d84a3a', text: 'A', icon: 'text', label: 'Ammu-Nation' } });
@@ -76,7 +76,8 @@ export class Places {
     if (s.kind === 'food' || s.kind === 'gym') {
       s.marker = G.markers.add({ x: s.l.door.x, z: s.l.door.z, radius: 1.5, color: 0xffb030, footOnly: true, once: false, arrow: true, onEnter: () => this.enter(s) });
     } else if (s.kind === 'pns') {
-      const drop = s.l.door; s.marker = G.markers.add({ x: drop.x, z: drop.z, radius: 3.4, color: 0x39c4d8, vehicleOnly: true, once: false, arrow: true, onEnter: () => this.enter(s) });
+      // locator only: the garage door opens by proximity, the player drives in and out themselves
+      const drop = s.l.door; s.marker = G.markers.add({ x: drop.x, z: drop.z, radius: 3.4, color: 0x39c4d8, vehicleOnly: true, once: false, arrow: true });
     }
     // weapon dealers and the safehouse use the icon + interact prompt instead of a glow marker
   }
@@ -194,9 +195,12 @@ export class Places {
     const door = new THREE.Mesh(new THREE.BoxGeometry(bayHw * 2 - 0.5, doorH, 0.16), new THREE.MeshLambertMaterial({ map: doorTexture() }));
     const dp = lp(0, zFront); door.position.set(dp.x, ground + doorH / 2, dp.z); door.rotation.y = yaw; group.add(door);
     s.garage = {
-      group, door, doorH, ground, yaw, hw, hd, bayHw, zWall, zFront,
+      group, door, doorH, ground, yaw, cx: l.x, cz: l.z, hw, hd, bayHw, zWall, zFront,
       bay: lp(0, zWall + zd * 0.56), entry: lp(0, zFront + 2.6), exit: lp(0, zFront + 7.2),
-      doorOpen: 0, phase: 'idle', t: 0, v: null, start: null
+      doorOpen: 0, target: 0, sprayT: 0, done: false, warned: false,
+      // a collider across the doorway that only exists while the shutter is shut, so the car can't
+      // drive out through a closed door (the player keeps full control the whole time)
+      doorColl: { x: dp.x, z: dp.z, hw: bayHw - 0.3, hd: 0.16, yaw, h: doorH, kind: 'garage_door' }, doorCollOn: false
     };
     this.carveGarage(s, { hw, hd, zWall, zFront, bayHw, lp });
   }
@@ -227,61 +231,56 @@ export class Places {
     g.door.scale.y = Math.max(0.03, 1 - g.doorOpen);
     g.door.position.y = g.ground + g.doorH * g.doorOpen + h / 2;
   }
-  startGarage(s) {
-    const pl = G.player, v = pl.vehicle, g = s.garage;
-    if (!v || !g || this.busy || g.phase !== 'idle') return;
-    if (G.missions && G.missions.blocksShops) return;
-    if (pl.money < 100) { if (this.cool <= 0) { G.hud.notify("Pay 'n' Spray: not enough cash ($100)"); this.cool = 3; } return; }
-    this.busy = true; this.cool = 8;
-    g.v = v; g.phase = 'open'; g.t = 0; g.start = { x: v.x, z: v.z, yaw: v.yaw };
-    pl.controlEnabled = false; v.input.throttle = 0; v.input.brake = 1; v.input.handbrake = true; v.vx = v.vz = 0;
-    G.audio && G.audio.play('door_open', { pos: v });
-    G.hud.fade(0, 10); if (G.camera && G.camera.snapTo) G.camera.snapTo(v);
+  // world -> garage local coords (building centre + yaw); local +z points at the street
+  localOf(g, x, z) { const dx = x - g.cx, dz = z - g.cz, cs = Math.cos(g.yaw), sn = Math.sin(g.yaw); return { lx: dx * cs - dz * sn, lz: dx * sn + dz * cs }; }
+  setDoorCollider(g, on) {
+    if (on === g.doorCollOn) return; const W = G.world; if (!W || !g.doorColl) return;
+    if (on) { W.placement.colliders.push(g.doorColl); W._indexCollider(g.doorColl); }
+    else { W.removeCollider(g.doorColl); const i = W.placement.colliders.indexOf(g.doorColl); if (i >= 0) W.placement.colliders.splice(i, 1); }
+    g.doorCollOn = on;
   }
+  respray(v, pl) {
+    if (pl.money < 100) return false;
+    pl.money -= 100;
+    v.repair(); const col = pick(PAINT); v.model.setBodyColor && v.model.setBodyColor(col); v.colors.body = col;
+    G.police.clear(); for (const c of G.vehicles.list.slice()) if (c.owner === 'police' && !c.mission && c !== v) G.vehicles.remove(c);
+    if (G.audio) { G.audio.play('spray', { pos: v }); G.audio.play('cash'); }
+    G.hud.notify("Pay 'n' Spray: -$100, vehicle resprayed, heat gone");
+    return true;
+  }
+  // Fully player-driven: the door opens as you approach, shuts while you are parked inside
+  // (the respray happens), then opens again so you drive out yourself. Control is never taken away.
   updateGarage(g, dt) {
-    const pl = G.player, v = g.v;
-    if (!v || v.exploded) { g.phase = 'idle'; g.v = null; this.busy = false; if (pl) pl.controlEnabled = true; return; }
-    switch (g.phase) {
-      case 'open':
-        this.doorStep(g, 1, dt); if (g.doorOpen >= 1) { g.phase = 'enter'; g.t = 0; }
-        break;
-      case 'enter': {
-        g.t += dt; const k = Math.min(1, g.t / 1.3), e = k * k * (3 - 2 * k), st = g.start;
-        v.x = lerp(st.x, g.bay.x, e); v.z = lerp(st.z, g.bay.z, e);
-        v.yaw = lerpAngle(st.yaw, g.yaw + Math.PI, e);
-        v.vx = v.vz = 0; v.y = G.world.groundY(v.x, v.z) + v.def.wheelRadius; v.groundY = v.y;
-        if (k >= 1) { g.phase = 'close'; G.audio && G.audio.play('door_close', { pos: v }); }
-        break;
+    const pl = G.player, v = pl.vehicle;
+    if (g.sprayT > 0) {
+      g.sprayT -= dt;
+      if (g.sprayT <= 0) { g.done = true; g.target = 1; if (G.audio) G.audio.play('door_open', { pos: g.bay }); }
+    } else if (!v || v.exploded) {
+      g.target = 0; if (!v) { g.done = false; g.warned = false; }
+    } else {
+      const l = this.localOf(g, v.x, v.z);
+      const near = l.lz > g.zWall - 2 && l.lz < g.zFront + 15 && Math.abs(l.lx) < g.bayHw + 3;
+      const inside = Math.abs(l.lx) < g.bayHw - 0.15 && l.lz > g.zWall + 0.4 && l.lz < g.zFront - 0.4;
+      if (inside && !g.done) {
+        if (g.doorOpen > 0.9) {
+          const blocked = G.missions && G.missions.blocksShops;
+          if (pl.money >= 100 && !blocked) g.target = 0;            // shut the door and spray
+          else { if (!g.warned && !blocked) { G.hud.notify("Pay 'n' Spray: not enough cash ($100)"); g.warned = true; } g.target = 1; g.done = true; }
+        }
+      } else if (inside && g.done) g.target = 1;                     // done: open and let them out
+      else if (near && !g.done) g.target = 1;                        // approaching: open
+      else if (!near) { g.done = false; g.warned = false; g.target = 0; }
+    }
+    this.doorStep(g, g.target, dt);
+    // the doorway only blocks while the shutter is essentially shut
+    this.setDoorCollider(g, g.doorOpen < 0.12);
+    // if the door finished shutting with the car inside, run the respray and hold it shut briefly
+    if (g.sprayT <= 0 && g.doorOpen <= 0.02 && g.target === 0 && v && !v.exploded && !g.done) {
+      const l = this.localOf(g, v.x, v.z);
+      if (Math.abs(l.lx) < g.bayHw && l.lz > g.zWall + 0.2 && l.lz < g.zFront) {
+        if (this.respray(v, pl)) g.sprayT = 1.4;
+        else { g.done = true; g.target = 1; }
       }
-      case 'close':
-        this.doorStep(g, 0, dt); if (g.doorOpen <= 0) { g.phase = 'spray'; g.t = 0; G.audio && G.audio.play('spray', { pos: v }); }
-        break;
-      case 'spray':
-        g.t += dt; if (g.t > 1.0) { g.phase = 'fade'; g.t = 0; G.hud.fade(1, 500); }
-        break;
-      case 'fade':
-        g.t += dt;
-        if (g.t > 0.6) {
-          if (pl.money >= 100) pl.money -= 100;
-          v.repair(); const col = pick(PAINT); v.model.setBodyColor && v.model.setBodyColor(col); v.colors.body = col;
-          G.police.clear(); for (const c of G.vehicles.list.slice()) if (c.owner === 'police' && !c.mission && c !== v) G.vehicles.remove(c);
-          const ex = g.exit; v.x = ex.x; v.z = ex.z; v.yaw = g.yaw; v.vx = v.vz = 0; v.y = G.world.groundY(v.x, v.z) + v.def.wheelRadius; v.groundY = v.y; v.input.handbrake = true;
-          if (G.camera && G.camera.snapTo) G.camera.snapTo(v);
-          G.audio && G.audio.play('cash');
-          G.hud.fade(0, 600); g.phase = 'exit'; g.t = 0;
-        }
-        break;
-      case 'exit':
-        g.t += dt;
-        if (g.t > 0.6) {
-          pl.controlEnabled = true; this.busy = false;
-          G.hud.notify("Pay 'n' Spray: -$100, vehicle resprayed, heat gone");
-          g.phase = 'reclose'; G.audio && G.audio.play('door_close', { pos: v });
-        }
-        break;
-      case 'reclose':
-        this.doorStep(g, 0, dt); if (g.doorOpen <= 0) { g.phase = 'idle'; g.v = null; }
-        break;
     }
   }
 
@@ -301,7 +300,7 @@ export class Places {
       }
       case 'home': this.openHome(); break;
       case 'gym': this.cool = 2; G.hud.notify(G.missions && G.missions.isDone('m04') ? 'Sal runs a fight club here. Look for the cyan G marker outside.' : "Sal's Gym is closed for now. Come back later."); break;
-      case 'pns': this.startGarage(s); break;
+      case 'pns': break;   // handled by the proximity door in updateGarage()
     }
   }
 
@@ -322,7 +321,7 @@ export class Places {
   update(dt) {
     if (this.cool > 0) this.cool -= dt;
     this.healT = (this.healT || 0) - dt; if (this.healT <= 0) { this.healT = 1.5; this.heal(); }
-    for (const s of this.shops) if (s.garage && s.garage.phase !== 'idle') this.updateGarage(s.garage, dt);
+    for (const s of this.shops) if (s.garage) this.updateGarage(s.garage, dt);
     // save icons bob and spin
     this.iconT += dt;
     for (const s of this.shops) if (s.icon) { s.icon.rotation.y += dt * 1.3; s.iconGroup.position.y = s.iconBaseY + Math.sin(this.iconT * 2.1) * 0.12; }
