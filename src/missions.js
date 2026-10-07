@@ -44,6 +44,22 @@ export class Runner {
     if (o.locked) v.locked = true;
     return v;
   }
+  // a scripted prop mesh (drill, vault door, breaker box...) tracked and removed with the mission
+  prop(obj) { this.guard(); this.extra.push(obj); G.scene.add(obj); return obj; }
+  // walk up to something and press E; returns a promise that resolves on interact (or mission abort)
+  interact(x, z, o = {}) {
+    this.guard();
+    return new Promise((resolve) => {
+      let handle = null, mk = null, bl = null;
+      const clean = () => { if (G.interactions && handle) G.interactions.remove(handle); handle = null; if (mk) { this.removeMarker(mk); mk = null; } if (bl) { this.removeBlip(bl); bl = null; } };
+      const finish = () => { clean(); if (o.onInteract) o.onInteract(); resolve(true); };
+      if (G.interactions) handle = G.interactions.add({ x, z, radius: o.radius || 2.8, footOnly: o.footOnly !== false, label: o.label || 'Interact', mission: true, onInteract: finish });
+      this.onCleanup(clean);
+      if (o.marker !== false) mk = this.marker(x, z, { radius: (o.radius || 2.8) * 1.1, color: o.color ?? 0x40ffd0, once: false, arrow: true, footOnly: o.footOnly !== false });
+      if (o.blip !== false) bl = this.blip({ x, z, color: o.blipColor ?? '#40ffd0', label: o.label || 'Objective', flash: true, priority: 4 });
+      if (o.text) this.objective(o.text);
+    });
+  }
   // put ped in car and give AI driver
   driver(v, ped, mode, opts = {}) { ped.enterVehicle(v, 0, true); const ai = new DriverAI(v, mode, opts); return ai; }
   marker(x, z, o = {}) { const m = G.markers.add({ x, z, ...o }); this.markers.push(m); return m; }
@@ -183,6 +199,8 @@ export class Runner {
   // mode 'pass': release friendly peds/vehicles into the world, remove leftover enemies. mode 'fail': remove everything.
   cleanup(mode = 'fail') {
     if (this.cleanupFns) { for (const fn of this.cleanupFns) { try { fn(mode); } catch (e) { console.error('cleanup hook', e); } } this.cleanupFns = null; }
+    for (const e of this.extra) { if (!e) continue; if (e.parent) e.parent.remove(e); if (e.userData && e.userData.own) e.traverse(o => { if (o.geometry && o.geometry.dispose) o.geometry.dispose(); if (o.material && o.material.dispose) o.material.dispose(); }); }
+    this.extra = [];
     for (const m of this.markers) G.markers.remove(m); this.markers = [];
     for (const b of this.blips) G.blips.remove(b); this.blips = [];
     for (const p of this.pickups) G.pickups.remove(p); this.pickups = [];
@@ -295,7 +313,7 @@ export class MissionManager {
     const next = this.nextMain(); const ne = next && this.startMarkers.get(next.id);
     if (ne) { ne.blip.nextQuest = true; ne.marker.nextQuest = true; }
   }
-  tryStart(def) { if (this.active || G.game.state !== 'play') return; if (G.time < this.noStartUntil) return; if (def.canStart && !def.canStart()) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify(def.cantStart || 'You cannot start this yet'); } return; } if (G.police.stars > 0) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify('Lose the cops first'); } return; } this.start(def); }
+  tryStart(def) { if (this.active || G.game.state !== 'play') return; if (G.time < this.noStartUntil) return; if (def.canStart && !def.canStart()) { if (G.time - (this._warnT || -9) > 4) { this._warnT = G.time; G.hud.notify(def.cantStart || 'You cannot start this yet'); } return; } this.start(def); }
   abortAll() { if (this.active) { this.active.ended = true; this.active.abortAll(new MissionAbort()); this.active.cleanup(); this.active = null; } this.noStartUntil = G.time + 0.6; G.game.inCutscene = false; G.camera && G.camera.endCine(); if (G.hud) { G.hud.setCinematic(false); G.hud.fade(0, 100); G.hud.clearSubs(); } G.player.controlEnabled = true; G.game.timeScale = 1; G.missionDensity = 1; this.blocksShops = false; this.restoreAmbient(); }
   onPlayerFailed(reason) { if (this.active && !this.active.ended) { this.active.abortAll(new MissionFail(reason)); } }
 
@@ -310,9 +328,9 @@ export class MissionManager {
     for (const p of G.peds.list.slice()) { if (p.isPlayer || p.mission || p.dead || p.role !== 'gang' || p.gang === 1 || p.vehicle) continue; try { G.peds.remove(p); } catch (e) { } }
   }
   restoreAmbient() { if (G.game.state === 'play' && G.sky) G.sky.lockWeather = false; if (this.savedGangTarget !== undefined) { if (G.game.state === 'play') G.population.gangTarget = this.savedGangTarget; this.savedGangTarget = undefined; } }
-  canReplay() { return !this.active && G.game.state === 'play' && G.police.stars === 0 && !G.player.vehicle && !G.player.dead; }
+  canReplay() { return !this.active && G.game.state === 'play' && !G.player.vehicle && !G.player.dead; }
   replay(def) {
-    if (!this.canReplay()) { G.hud.toast('Finish what you are doing first (no wanted level, on foot)'); return; }
+    if (!this.canReplay()) { G.hud.toast('Finish what you are doing first (on foot)'); return; }
     const w = def.where ? def.where() : null;
     if (w) G.game.teleport(w.x + 2.5, w.z + 2.5, 0);
     this.clearStarts();

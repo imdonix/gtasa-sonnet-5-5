@@ -4,6 +4,7 @@
 // gameplay idea the base story did not use: civilian defence, a checkpoint advance, stealth and
 // alarms, an amphibious retrieval, an anti-air stand-off, convoy interception, a tail chain,
 // a multi-stage heist, a timed territory run and a helicopter finale.
+import * as THREE from 'three';
 import { G } from './state.js';
 import { clamp, dist2, pick, TAU, sleep } from './util.js';
 import { GANG } from './mapdata.js';
@@ -143,6 +144,49 @@ async function tailSegment(r, from, to, name, o = {}) {
   return { car: tgt.car, drv: tgt.drv };
 }
 
+// ---- small scripted props for the bank heist (removed with the mission)
+function mMat(color, emissive) { return new THREE.MeshLambertMaterial({ color, emissive: emissive || 0x000000 }); }
+function makeBreakerBox() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.35, 0.42), mMat(0x3c434c)); body.position.y = 0.68; g.add(body);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.95, 0.05), mMat(0x555c66)); panel.position.set(0, 0.72, 0.24); g.add(panel);
+  const hazard = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.14, 0.06), mMat(0xe6c220)); hazard.position.set(0, 1.2, 0.25); g.add(hazard);
+  const pilot = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.06), new THREE.MeshBasicMaterial({ color: 0xff3b2f })); pilot.position.set(0.27, 0.95, 0.26); g.add(pilot);
+  g.userData.pilot = pilot; g.userData.own = true; return g;
+}
+function makeKeycard() {
+  const g = new THREE.Group();
+  const card = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.02, 0.22), mMat(0xe8e8ea)); card.position.y = 0.02; g.add(card);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.006, 0.05), mMat(0x20242c)); stripe.position.set(0, 0.034, -0.05); g.add(stripe);
+  g.userData.own = true; return g;
+}
+function makeDrill() {
+  const g = new THREE.Group();
+  const cart = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.55, 2.0), mMat(0x5a6068)); cart.position.y = 0.4; g.add(cart);
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.15, 0.5), mMat(0x44484e)); leg.position.set(0, 1.05, -0.55); g.add(leg);
+  const motor = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.6, 0.9), mMat(0x2a5ab8)); motor.position.set(0, 1.35, -0.35); g.add(motor);
+  const bit = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.7, 8), mMat(0xa8b0b8)); shaft.rotation.x = Math.PI / 2; shaft.position.z = 0.85; bit.add(shaft);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 8), mMat(0xd0d6dc)); tip.rotation.x = Math.PI / 2; tip.position.z = 1.85; bit.add(tip);
+  bit.position.set(0, 1.05, 0.35); g.add(bit);
+  g.userData.bit = bit; g.userData.own = true; return g;
+}
+function makeVaultDoor() {
+  const pivot = new THREE.Group();
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(3.6, 4.4, 0.45), mMat(0x656b73)); slab.position.set(1.8, 2.2, 0); pivot.add(slab);
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.1, 8, 18), mMat(0x9aa0a8)); wheel.position.set(1.8, 2.2, 0.3); pivot.add(wheel);
+  for (let i = 0; i < 3; i++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.09, 0.09), mMat(0x9aa0a8)); sp.position.set(1.8, 2.2, 0.3); sp.rotation.z = i * Math.PI / 3; pivot.add(sp); }
+  const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.7, 0.24), mMat(0x8a9098)); bolt.position.set(3.3, 2.2, 0.25); pivot.add(bolt);
+  pivot.userData.own = true; return pivot;
+}
+function makeLedgerCase() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.5, 0.24), mMat(0x3a2a1a)); g.add(body);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.1, 0.26), mMat(0xc8a020)); band.position.y = 0.05; g.add(band);
+  const clip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.07), mMat(0x1a1a1a)); clip.position.y = 0.28; g.add(clip);
+  g.userData.own = true; return g;
+}
+
 export const STORY4 = [
   // ============================================================================================ 15
   {
@@ -222,11 +266,13 @@ export const STORY4 = [
     async run(r) {
       const tee = r.giver, pl = G.player; const hq = doorOf('label') || doorOf('bank') || doorOf('home'); const home = doorOf('home');
       const fx = Math.sin(hq.yaw), fz = Math.cos(hq.yaw);
-      await r.dialogue([
+      await r.cutscene([
+        twoShot(tee, pl, 13.6, { dist: 4, side: 1, drift: 0.4 })
+      ], [
         ['Tee', "Halcyon has an accountant named Ellis. Eight years of ledgers, every account Wexler ever touched.", 5.8],
         ['Tee', "He called me an hour ago, then security sealed the building. He's still inside.", 5],
         ['Jay', "I'll go get him. Keep your phone on.", 2.6]
-      ]);
+      ], { fadeIn: false });
       r.supply({ ammo: { ak47: 160, smg: 180, pistol: 80 }, equip: 'ak47', hp: 100, armor: 60 });
       const ks = kerbSpot({ x: tee.x, z: tee.z }, 1, 100);
       const car = r.car('muscle', ks.x, ks.z, ks.yaw, { color: 0x1a1a24 }); car.name = 'Stinger';
@@ -279,11 +325,13 @@ export const STORY4 = [
     async run(r) {
       const birdie = r.giver, pl = G.player; const lot = doorOf('dealer') || doorOf('pns_a') || doorOf('home'); const home = doorOf('home');
       G.sky.hour = 1.4; G.sky.setWeather('clear'); G.sky.lockWeather = true;
-      await r.dialogue([
+      await r.cutscene([
+        twoShot(birdie, pl, 17.6, { dist: 3.8, side: -1, drift: 0.35 })
+      ], [
         ['Birdie', "Ellis gave me the layout of Wexler's impound. Cameras, dogs, the lot. I can blind the cameras from here.", 6],
         ['Birdie', "What I can't blind is eyes. Six guards walk that yard. If one sees you and sounds the alarm, the whole place wakes up.", 6.4],
         ['Birdie', "Take the knife. Quiet is the whole game. The black ledger's in the office.", 5]
-      ]);
+      ], { fadeIn: false });
       r.give('knife', 0, true); r.give('bat', 0, false);
       r.supply({ ammo: { pistol: 40 }, hp: 100, armor: 40 });
       G.hud.notify('Detection fills while guards can see you. Melee is silent.');
@@ -339,12 +387,14 @@ export const STORY4 = [
       const px = pier ? pier.x : shop.x, pz = pier ? pier.z : shop.z;
       const wp = deepWater(px, pz, 25, 85);
       G.sky.hour = 6.6; G.sky.setWeather('clear'); G.sky.lockWeather = true;
-      await r.dialogue([
+      await r.cutscene([
+        twoShot(hollis, pl, 18.3, { dist: 4, side: 1, drift: 0.4 })
+      ], [
         ['Hollis', "Word on the water: Wexler's courier scuttled his boat off the Santa Maria pier last night. The black ledger went down with it.", 6.4],
         ['Hollis', "I marked the wreck with a buoy. It's a swim. Get to the marker and the case comes up with you.", 5.8],
         ['Jay', "And her people?", 1.6],
         ['Hollis', "They watch the marina. The moment you have it, they'll know.", 4.4]
-      ]);
+      ], { fadeIn: false });
       r.supply({ ammo: { pistol: 60, smg: 120 }, hp: 100, armor: 40 });
       const wreckBlip = r.blip({ x: wp.x, z: wp.z, color: '#39c4d8', label: 'Wreck', flash: true, priority: 5 });
       G.hud.notify('Water ahead — hold forward to swim.');
@@ -381,11 +431,13 @@ export const STORY4 = [
     async run(r) {
       const ray = r.giver, pl = G.player; const home = doorOf('home');
       G.sky.hour = 15.5; G.sky.setWeather('smog'); G.sky.lockWeather = true;
-      await r.dialogue([
+      await r.cutscene([
+        twoShot(ray, pl, 13.6, { dist: 4.2, side: 1, drift: 0.4 })
+      ], [
         ['Ray', "Wexler sent a message. Not paper — rotor blades. A gunship and a crew are on their way to Grove.", 5.8],
         ['Ray', "Take the launcher off the porch. When that chopper dips, put a rocket in it.", 5],
         ['Jay', "Everybody inside. I'll handle it.", 2.6]
-      ]);
+      ], { fadeIn: false });
       r.supply({ ammo: { rpg: 8, ak47: 200, smg: 150, pistol: 80 }, equip: 'rpg', hp: 100, armor: 100 });
       G.hud.notify('RPG: hold RIGHT MOUSE to aim, LEFT MOUSE to fire.');
       const hs = laneSpot({ x: home.x - 220, z: home.z + 60 }, 1, 280);
@@ -425,11 +477,13 @@ export const STORY4 = [
     async run(r) {
       const cody0 = r.giver, pl = G.player; const bank = doorOf('bank') || doorOf('home'); const term = doorOf('terminal') || doorOf('home'); const home = doorOf('home');
       const cody = ally(r, 'cody', cody0.x, cody0.z, { weapon: 'smg', health: 200 }); G.peds.remove(cody0); r.giver = null; cody.name = 'Cody';
-      await r.dialogue([
+      await r.cutscene([
+        twoShot(cody, pl, 13.6, { dist: 4, side: -1, drift: 0.4 })
+      ], [
         ['Cody', "The ledger says Wexler's fixer moves the original books across town in a three-car convoy, every Thursday.", 5.8],
         ['Cody', "From the bank to the airport. She thinks nobody's watching. We take the middle car, we take the truth.", 5.4],
         ['Jay', "Then let's introduce ourselves.", 2.2]
-      ]);
+      ], { fadeIn: false });
       r.supply({ ammo: { ak47: 200, smg: 180, pistol: 80 }, equip: 'ak47', hp: 100, armor: 80 });
       squad(r, [cody]); r.keepAlive(cody, 'Cody');
       const ks = kerbSpot({ x: home.x, z: home.z }, 1, 100);
@@ -447,7 +501,7 @@ export const STORY4 = [
       const lb = r.blip({ entity: lead, color: '#ff3030', label: 'Courier', flash: true, priority: 5 }); lead.blipObj = lb;
       await r.goto({ x: bank.x, z: bank.z }, { mode: 'vehicle', radius: 70, text: 'Intercept the <b>convoy</b>', label: 'Bank', color: 0xff3030, blipColor: '#ff3030', arrow: false });
       const lai = new DriverAI(lead, 'goto', { dest: { x: term.x, z: term.z }, cruise: 23, aggressive: true, ignoreLights: true, stopDist: 16 });
-      r.speak('Cody', 'There they are! Stop the middle car — take out the escorts!', 3.4);
+      r.speak('Cody', 'There they are! Stop the middle car — take out the escorts!', 3.8);
       let stopped = false;
       r.tick(dt => {
         if (stopped) return;
@@ -532,55 +586,136 @@ export const STORY4 = [
     id: 'm22', title: 'Break In', needs: ['m21'], giver: 'birdie', letter: 'B', color: 0x40ffd0, reward: 12000, respect: 12, density: 0.4,
     where: () => besideDoor('garage_harlan', 4, 4) || besideDoor('ammu_a', 3, 3),
     async run(r) {
-      const birdie = r.giver, pl = G.player; const bank = doorOf('bank') || doorOf('home'); const home = doorOf('home');
-      const fx = Math.sin(bank.yaw), fz = Math.cos(bank.yaw);
-      await r.dialogue([
-        ['Birdie', "The bank vault has one door, three cameras and a floor sensor. I can blind the cameras if you kill the power.", 6],
-        ['Birdie', "Then it's the manager's keycard and forty-five seconds on the drill. I'll keep the line open.", 5.4],
-        ['Jay', "Forty-five seconds is a long time in a bank.", 2.6],
-        ['Birdie', "That's why you're not going in alone.", 2.6]
-      ]);
+      const birdie0 = r.giver, pl = G.player; const bank = doorOf('bank') || doorOf('home'); const home = doorOf('home');
+      const bl = bank.l; const cs = Math.cos(bank.yaw), sn = Math.sin(bank.yaw);
+      const lp = (lx, lz) => ({ x: bl.x + lx * cs + lz * sn, z: bl.z - lx * sn + lz * cs });
+      // camera helpers: bf points out to the street (open), rt is the bank's right
+      const bf = { x: Math.sin(bank.yaw), z: Math.cos(bank.yaw) }, rt = { x: Math.cos(bank.yaw), z: -Math.sin(bank.yaw) };
+      const cam = (d, s, h) => ({ x: bank.x + bf.x * d + rt.x * s, z: bank.z + bf.z * d + rt.z * s, h });
+      G.sky.hour = 1.3; G.sky.setWeather('clear'); G.sky.lockWeather = true;
+      const bir = ally(r, 'birdie', birdie0.x, birdie0.z, { weapon: 'pistol', health: 200 }); G.peds.remove(birdie0); r.giver = null;
+      bir.invincible = true;   // Birdie runs the job with unlimited health: she cannot be killed during the heist
+      const c1 = walkSpot(birdie0.x + 1.8, birdie0.z + 1.0, 1.2, 3), c2 = walkSpot(birdie0.x - 1.8, birdie0.z + 1.0, 1.2, 3);
+      const cody = ally(r, 'cody', c1.x, c1.z, { weapon: 'smg', health: 220 });
+      const dre = ally(r, 'dre', c2.x, c2.z, { weapon: 'ak47', health: 240 });
+      await r.cutscene([
+        twoShot(bir, pl, 8, { dist: 4.2, side: -1, drift: 0.4 }),
+        shot(cam(17, 7, 8), { x: bl.x, z: bl.z, h: 4 }, 11.5, { to: cam(15, 4, 6), fov: 46 })
+      ], [
+        ['Birdie', "Los Santos Savings and Trust. One vault door, three cameras, a floor sensor, and a manager who hates his job.", 6.6],
+        ['Birdie', "Kill the power, take his keycard, then hold the alley while my drill eats the side door.", 5.4],
+        ['Jay', "How long on the drill?", 2.2],
+        ['Birdie', "Forty-five seconds. That's why I'm coming with you — Cody and Dre are on the guns.", 4.6]
+      ], { fadeIn: false });
       r.supply({ ammo: { ak47: 220, shotgun: 50, smg: 180, pistol: 80 }, equip: 'ak47', hp: 100, armor: 80 });
-      const ks = kerbSpot({ x: bank.x, z: bank.z }, 1, 140);
-      const car = r.car('van', ks.x, ks.z, ks.yaw, { color: 0x1c2436 }); car.name = 'Getaway van'; car.locked = false;
-      await r.enterVehicle(car, { text: 'Take the <b>getaway van</b> (F)', label: 'Van' });
-      // stage 1: power
-      const box = walkSpot(bank.x + fx * 26 + 6, bank.z + fz * 26 + 6, 2, 9);
-      await r.goto(box, { mode: 'foot', radius: 2.8, text: 'Cut the <b>power</b> at the service box', label: 'Power', color: 0x40ffd0, blipColor: '#40ffd0' });
-      G.fx.sparks(box.x, gy(box.x, box.z) + 1.3, box.z, 16); G.audio.play('explosion_small');
-      r.speak('Birdie', 'Cameras are dark. Move.', 2.8);
-      // stage 2: the manager's keycard
-      const mgr = suits(r, bank.x, bank.z, 1, { rmin: 2, rmax: 6, weapons: ['pistol'], sightRange: 60, health: 140 })[0];
+      // the crew's ride waits at the meet — it never sits parked on the bank's doorstep
+      const ks = kerbSpot({ x: birdie0.x, z: birdie0.z }, 1, 140);
+      const car = r.car('suv', ks.x, ks.z, ks.yaw, { color: 0x1c2436 }); car.name = 'Getaway SUV'; car.locked = false;
+      squad(r, [bir, cody, dre]);
+      await r.enterVehicle(car, { text: 'Take the <b>getaway SUV</b> (F)', label: 'SUV' });
+      await r.goto({ x: bank.x, z: bank.z }, { mode: 'vehicle', radius: 60, text: 'Drive to the <b>Los Santos Savings &amp; Trust</b>', label: 'Bank', color: 0x40ffd0, blipColor: '#40ffd0', arrow: false });
+      await r.cutscene([
+        shot(cam(22, 11, 9), { x: bl.x, z: bl.z, h: 4.5 }, 6, { to: cam(17, 6, 6), fov: 47 }),
+        shot(cam(12, -5, 3), { x: bank.x, z: bank.z, h: 2.6 }, 5, { fov: 42 })
+      ], [
+        ['Birdie', "Cameras sweep the front. Park us down the side street — we walk in round the corner.", 5.2]
+      ], { fadeOut: true });
+      // ---- park the getaway car out of sight: kerb on the avenue beside the bank's side alley
+      const parkRef = lp(-20, 18.5);
+      const kA = kerbSpot(parkRef, 1, 80), kB = kerbSpot(parkRef, -1, 80);
+      const pk = kA.x >= kB.x ? kA : kB;
+      await r.goto({ x: pk.x, z: pk.z }, { mode: 'vehicle', radius: 9, slow: 3, stop: true, text: 'Park the <b>getaway SUV</b> down the side street', label: 'Park', color: 0x40ffd0, blipColor: '#40ffd0', arrow: false });
+      r.speak('Birdie', "Good. Out of the cameras' line. Everyone out.", 3);
+      // ---- stage 1: cut the power at a real breaker box round the side — it is guarded
+      const bp = lp(-11.15, 2.5);
+      const breaker = r.prop(makeBreakerBox()); breaker.position.set(bp.x, gy(bp.x, bp.z), bp.z); breaker.rotation.y = bank.yaw - Math.PI / 2;
+      const bg = suits(r, bp.x + 1, bp.z - 2, 3, { rmin: 1.5, rmax: 5, weapons: ['smg', 'pistol', 'shotgun'], sightRange: 70, health: 110 });
+      for (const p of bg) p.blipObj = r.blip({ entity: p, color: '#ff3030', label: 'Guard', priority: 3 });
+      await r.interact(bp.x, bp.z, {
+        text: 'Kill the <b>power</b> at the breaker box (guarded)', label: 'Breaker box', color: 0x40ffd0, blipColor: '#40ffd0', radius: 2.8,
+        onInteract: () => {
+          G.fx.sparks(bp.x, gy(bp.x, bp.z) + 1.25, bp.z, 20);
+          G.audio.play('explosion_small', { pos: { x: bp.x, y: 1, z: bp.z } });
+          if (breaker.userData.pilot) breaker.userData.pilot.material.color.setHex(0x2a3a2a);
+          r.speak('Birdie', 'Power down. Cameras are blind — move.', 3);
+        }
+      });
+      const bpCam = lp(-13.6, 5.5);
+      await r.cutscene([
+        shot({ x: bpCam.x, z: bpCam.z, h: 2.4 }, { x: bp.x, z: bp.z, h: 1.1 }, 4, { fov: 40 })
+      ], [['Birdie', "Lights out. Nobody sees us now.", 3]], { fadeIn: false });
+      // ---- stage 2: the manager's keycard at the front door
+      const dp0 = walkSpot(bank.x + bf.x * 3, bank.z + bf.z * 3, 1.5, 4);
+      const mgr = suits(r, dp0.x, dp0.z, 1, { rmin: 1, rmax: 3, weapons: ['pistol'], sightRange: 60, health: 150 })[0];
       mgr.name = 'Vault manager'; mgr.armor = 40; mgr.blipObj = r.blip({ entity: mgr, color: '#ff3030', label: 'Manager', flash: true, priority: 5 });
-      const mg = suits(r, bank.x, bank.z, 4, { rmin: 6, rmax: 18, weapons: ['smg', 'pistol', 'shotgun', 'pistol'], sightRange: 70, health: 100 });
+      const mg = suits(r, dp0.x, dp0.z, 4, { rmin: 4, rmax: 12, weapons: ['smg', 'pistol', 'shotgun', 'pistol'], sightRange: 70, health: 100 });
       for (const p of mg) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
-      await r.killAll([mgr, ...mg], { text: "Take the <b>manager's keycard</b>", label: 'Security' });
-      // stage 3: drill the vault
-      await r.goto({ x: bank.x, z: bank.z }, { mode: 'foot', radius: 6, text: 'Get to the <b>vault door</b>', label: 'Vault', color: 0x40ffd0, blipColor: '#40ffd0' });
-      r.cache(bank.x + 5, bank.z + 5, { health: 2, armor: 2, r: 6 });
+      await r.killAll([mgr, ...mg], { text: "Take out the <b>manager</b> and his guards", label: 'Security' });
+      const kc = { x: mgr.x, z: mgr.z };
+      const card = r.prop(makeKeycard()); card.position.set(kc.x, gy(kc.x, kc.z) + 0.06, kc.z); card.rotation.y = Math.random() * TAU;
+      await r.interact(kc.x, kc.z, { text: "Grab the <b>keycard</b>", label: 'Keycard', color: 0xffd040, blipColor: '#ffd040', radius: 2.6, onInteract: () => { if (card.parent) card.parent.remove(card); } });
+      // ---- stage 3: drill the vault door set into the bank's side wall (south wall, in the side yard)
+      const vp = lp(-11.15, -6);
+      const vault = r.prop(makeVaultDoor()); vault.position.set(vp.x, gy(vp.x, vp.z), vp.z); vault.rotation.y = bank.yaw - Math.PI / 2;
+      const dp = lp(-13.5, -6);
+      const drill = r.prop(makeDrill()); drill.position.set(dp.x, gy(dp.x, dp.z), dp.z); drill.rotation.y = Math.atan2(vp.x - dp.x, vp.z - dp.z);
+      await r.interact(dp.x, dp.z, {
+        text: 'Start the <b>drill</b>', label: 'Drill', color: 0x40ffd0, blipColor: '#40ffd0', radius: 3,
+        onInteract: () => { G.audio.play('door_open', { pos: { x: dp.x, y: gy(dp.x, dp.z) + 1, z: dp.z } }); r.speak('Birdie', "Drill's running! Keep them off me for forty-five seconds!", 3.4); }
+      });
+      r.cache(dp.x + 4, dp.z - 4, { health: 2, armor: 2, r: 5 });
+      await r.cutscene([
+        shot({ x: dp.x + 3.5, z: dp.z - 5.5, h: 3 }, { x: dp.x, z: dp.z, h: 1.2 }, 4.5, { to: { x: dp.x - 3.5, z: dp.z - 5.5, h: 3.2 }, fov: 42 })
+      ], [['Birdie', "Vault door, meet forty-five seconds of bad news.", 3.6]], { fadeIn: false });
       const T = r.timer(45, 'Drilling the vault', () => { });
-      r.objective('Defend the <b>vault</b> while the drill runs');
-      const waves = [];
-      let wt = 5, n = 0;
+      r.objective('Defend <b>Birdie</b> while the drill runs');
+      let drilling = true;
       r.tick(dt => {
-        if (T.expired) return; wt -= dt; if (wt > 0) return; wt = 12; n++;
-        const w = suits(r, bank.x, bank.z, 2 + Math.min(2, n), { rmin: 12, rmax: 26, weapons: ['smg', 'ak47', 'pistol', 'shotgun'], sightRange: 80, health: 100 });
+        if (!drilling) return;
+        drill.userData.bit.rotation.z += dt * 16;
+        if (Math.random() < dt * 10) G.fx.sparks(vp.x, gy(vp.x, vp.z) + 1.4, vp.z, 3);
+        G.hud.progress('Drilling the vault', 1 - Math.max(0, T.left) / 45);
+      });
+      const waves = [];
+      let wt = 4, n = 0;
+      r.tick(dt => {
+        if (T.expired) return; wt -= dt; if (wt > 0) return; wt = 11; n++;
+        const w = suits(r, dp.x, dp.z, 2 + Math.min(2, n), { rmin: 10, rmax: 24, weapons: ['smg', 'ak47', 'pistol', 'shotgun'], sightRange: 80, health: 100 });
         for (const p of w) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
         waves.push(...w);
-        if (n === 1) r.speak('Birdie', "They know we're here! Hold the door!", 3);
+        if (n === 1) r.speak('Birdie', 'Company! Keep them off the drill!', 3);
       });
       await r.wait(() => T.expired);
-      r.clearTimer();
-      r.speak('Birdie', "Vault's open! Take everything and run!", 3.2);
+      drilling = false; G.hud.progress('', null); r.clearTimer();
+      // the drill backs off and the vault swings open into the yard
+      let openT = 0;
+      r.tick(dt => {
+        if (openT >= 1) return;
+        openT = Math.min(1, openT + dt / 1.5);
+        const e = openT * openT * (3 - 2 * openT);
+        vault.rotation.y = (bank.yaw - Math.PI / 2) - 2.1 * e;
+        drill.position.z = dp.z - 2.6 * e;
+        if (Math.random() < dt * 16) G.fx.sparks(vp.x, gy(vp.x, vp.z) + 1.4, vp.z, 3);
+      });
+      await r.cutscene([
+        shot({ x: dp.x + 4, z: dp.z - 6, h: 3.4 }, { x: vp.x, z: vp.z, h: 2.1 }, 5.5, { to: { x: dp.x - 2, z: dp.z - 6.5, h: 3.6 }, fov: 44 })
+      ], [['Birdie', "We're in. There's the crown ledger.", 3.4]], { fadeIn: false });
       for (const p of waves) if (!p.dead && !p.blipObj) p.blipObj = r.blip({ entity: p, color: '#ff3030', label: 'Security', priority: 3 });
-      await r.wait(() => waves.filter(p => !p.dead).length <= 1, { timeout: 30 }).catch(() => { });
-      // stage 4: escape
+      await r.wait(() => waves.filter(p => !p.dead).length <= 1, { timeout: 25 }).catch(() => { });
+      // ---- stage 4: grab the ledger, then run
+      const lzp = lp(-14, -6);
+      const ledger = r.prop(makeLedgerCase()); ledger.position.set(lzp.x, gy(lzp.x, lzp.z) + 0.45, lzp.z); ledger.rotation.y = bank.yaw - Math.PI / 2;
+      await r.interact(lzp.x, lzp.z, { text: 'Grab the <b>crown ledger</b>', label: 'Ledger', color: 0x40ffd0, blipColor: '#40ffd0', radius: 3, onInteract: () => { if (ledger.parent) ledger.parent.remove(ledger); } });
       G.police.setStars(3);
-      r.objective('Escape the bank with the <b>crown ledger</b>');
+      r.speak('Birdie', "Alarm's tripped — every cop in the city! Go, go!", 3.4);
+      r.blip({ entity: car, color: '#ffd040', label: 'Getaway SUV', flash: true, priority: 4 });
+      await r.cutscene([
+        shot({ x: dp.x + 6, z: dp.z - 7, h: 3.6 }, { x: vp.x, z: vp.z, h: 2.2 }, 4.5, { fov: 48 })
+      ], [['Birdie', 'Get us to Grove Street. I\'ll keep the ledger dry.', 3.6]]);
       await r.goto(home, { mode: 'vehicle', radius: 8, slow: 12, text: 'Get the <b>ledger</b> to Grove Street', label: 'Home', color: 0xffd040, blipColor: '#ffd040' });
       await r.loseWanted('Lose the <b>cops</b>');
       await r.dialogue([
-        ['Birdie', "We did it. Every page. Wexler's whole empire, in the back of the van.", 4.8],
+        ['Birdie', "We did it. Every page. Wexler's whole empire, in the back of the SUV.", 4.8],
         ['Ray', "Then tonight we finish it. She'll be at her tower when the news breaks. We go in before she can run.", 5.8]
       ]);
       car.mission = false; car.owner = 'player';
@@ -594,11 +729,13 @@ export const STORY4 = [
     afterDone() { for (const n of ['idlewood', 'jefferson', 'eastls']) G.game.territories.add(n); },
     async run(r) {
       const ray = r.giver, pl = G.player; const home = doorOf('home');
-      await r.dialogue([
+      await r.cutscene([
+        twoShot(ray, pl, 13.9, { dist: 4.2, side: 1, drift: 0.4 })
+      ], [
         ['Ray', "One night, three corners. Wexler pays crews in Jefferson, Idlewood and East Los Santos to keep our people indoors.", 5.8],
         ['Ray', "Take all three before sunrise and the whole east side belongs to the set. Fail, and they'll think we're soft.", 5.4],
         ['Jay', "Three corners. One night. Let's move.", 2.6]
-      ]);
+      ], { fadeIn: false });
       r.supply({ ammo: { ak47: 260, smg: 240, shotgun: 60, pistol: 100, grenade: 4 }, equip: 'ak47', hp: 100, armor: 80 });
       const cody = ally(r, 'cody', ray.x + 2, ray.z, { weapon: 'smg', health: 200 });
       const dre = ally(r, 'dre', ray.x - 2, ray.z, { weapon: 'ak47', health: 220 });

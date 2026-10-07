@@ -61,6 +61,8 @@ const OUT = '/tmp/claude-1001/-home-tamasmagyar-Work-testgame/2244238a-7010-4c23
         if (n % 4 === 0) {
           const obj = document.getElementById('objective').textContent; if (obj !== lastObj) { lastObj = obj; log(def.id, 'obj:', obj.slice(0, 90)); }
           if (!game.inCutscene) {
+            // press E when a mission interactable (breaker box, drill, ...) is targeted
+            if (G.interactions && G.interactions.target && G.interactions.target.mission) G.input.pressed.add('KeyE');
             // kill enemies
             for (const q of G.peds.list) if (!q.dead && !q.isPlayer && q.mission && (q.hostile || q.role === 'enemy' || q.name === 'Courier' || q.name === 'Duke Price') && q.role !== 'ally') { q.damage(1e5, { source: pl }); }
             for (const v of G.vehicles.list) if (v.name === 'Armored truck' && !v.wrecked && v.health > v.maxHealth * 0.4) v.health = v.maxHealth * 0.3;

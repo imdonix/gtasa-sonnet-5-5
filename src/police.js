@@ -14,6 +14,7 @@ export class Police {
     this.arrestT = 0; this.cars = []; this.heli = null; this.roadblocks = []; this.enabled = true;
     this.heliShootT = 0; this.cooldown = 0; this.noWanted = false; this.checkT = 0;
     this.fbi = false; this.swatT = 0; this.rbT = 0;
+    this._calm = false; this._held = null;   // cutscene hold: chasers parked until the scene ends
   }
   get wanted() { return this.stars > 0; }
 
@@ -90,7 +91,7 @@ export class Police {
   onPlayerCrash(v, other, speed) { if (other && (other.type === 'police' || other.type === 'swatvan') && speed > 5) this.raise(0, 'police collision', 1); }
   onExplosion(x, z, src) { if (src && (src.isPlayer || (src.vehicle && src.vehicle.driver && src.vehicle.driver.isPlayer)) && this.witnessed(x, z, 70, 40)) this.raise(1, 'explosion', 2); }
   arrestAttempt(cop, dt) {
-    const pl = G.player; if (pl.dead || this.stars > 2) return;
+    const pl = G.player; if (pl.dead || this.stars > 2 || (G.game && G.game.inCutscene)) return;
     if (pl.vehicle && pl.vehicle.totalSpeed > 4) return;
     this.arrestT += dt * 2.3;
     if (this.arrestT > 1.8) { this.arrestT = 0; G.game.onPlayerBusted(); }
@@ -109,9 +110,41 @@ export class Police {
     this.arrestT = 0;
   }
 
+  // ---- cutscene hold: while a scripted scene runs the police keep the streets but stop attacking.
+  // Chase cars park (handbrake) and their state is remembered; on-foot cops freeze and drop target.
+  hold() {
+    this._held = [];
+    for (const v of G.vehicles.list) {
+      const ai = v.ai, d = v.driver;
+      if (!ai || !d || d.isPlayer || v.mission || v.wrecked || v.exploded) continue;
+      if (ai.mode !== 'chase' || (d.role !== 'cop' && d.role !== 'swat')) continue;
+      this._held.push({ v, target: ai.target, pursuitSpeed: ai.pursuitSpeed, ramTarget: ai.ramTarget, stopDist: ai.stopDist });
+      ai.setMode('idle'); v.input.handbrake = true;
+    }
+    for (const p of G.peds.list) {
+      if (p.dead || p.isPlayer || p.vehicle || !(p.role === 'cop' || p.role === 'swat')) continue;
+      p.aiming = false; p.target = null; p.move.x = p.move.z = 0; p.speedTarget = 0;
+    }
+    this.arrestT = 0;
+  }
+  resume() {
+    const held = this._held; this._held = null;
+    if (!held || this.stars <= 0) return;   // heat cleared during the scene: nothing to resume
+    for (const h of held) {
+      const v = h.v; if (!G.vehicles.list.includes(v) || v.wrecked || v.exploded || !v.ai) continue;
+      const d = v.driver; if (!d || (d.role !== 'cop' && d.role !== 'swat')) continue;
+      v.ai.setMode('chase', { target: h.target || G.player.vehicle || G.player, stopDist: h.stopDist ?? 7, pursuitSpeed: h.pursuitSpeed, ramTarget: !!h.ramTarget });
+      v.setSiren(true);
+    }
+  }
+
   // ---- update
   update(dt) {
     const pl = G.player; if (!pl) return;
+    // scripted cutscenes put the police on hold: no attacks, arrests or fresh units while the camera runs
+    const cut = !!(G.game && G.game.inCutscene);
+    if (cut !== this._calm) { this._calm = cut; if (cut) this.hold(); else this.resume(); }
+    if (cut) { this.updateHeli(dt); return; }
     if (this.pendingPax && this.pendingPax.length) {
       const q = this.pendingPax.shift();
       if (G.vehicles.list.includes(q.v) && !q.v.wrecked && !q.v.seatPeds[q.i] && this.stars > 0) {
@@ -250,7 +283,7 @@ export class Police {
 
   updateHeli(dt) {
     const pl = G.player; const ref = pl.vehicle || pl;
-    if (this.stars >= 4 && !this.heli) {
+    if (this.stars >= 4 && !this.heli && !this._calm) {
       const ang = Math.random() * TAU; const x = ref.x + Math.cos(ang) * 200, z = ref.z + Math.sin(ang) * 200;
       const v = G.vehicles.spawn('policeheli', x, z, 0, { owner: 'police' });
       v.y = G.world.groundY(x, z) + 50; v.def = v.def; v.isHeli = true; v.noDamage = false; v.sleeping = false;
@@ -275,8 +308,8 @@ export class Police {
     v.pitch = damp(v.pitch, clamp(-Math.hypot(v.vx, v.vz) * 0.012, -0.2, 0), 2, dt); v.roll = damp(v.roll, clamp(v.vx * 0.004 * Math.cos(v.yaw) - v.vz * 0.004 * Math.sin(v.yaw), -0.2, 0.2), 2, dt);
     v.group.position.set(v.x, v.y, v.z); v.group.rotation.set(v.pitch, v.yaw, v.roll, 'YXZ'); v.obb.x = v.x; v.obb.z = v.z; v.model.update && v.model.update(dt);
     if (H.audio) H.audio.setPos(v);
-    // shooting at 5+
-    if (this.stars >= 5 && !H.leave) {
+    // shooting at 5+ (never during a cutscene: the helicopter just flies over)
+    if (this.stars >= 5 && !H.leave && !this._calm) {
       this.heliShootT -= dt;
       if (this.heliShootT <= 0 && this.seenNow && Math.hypot(v.x - ref.x, v.z - ref.z) < 70) {
         this.heliShootT = 0.14;

@@ -465,7 +465,7 @@ function seatedBrain(p, dt) {
   const v = p.vehicle;
   if (!v) return;
   // passengers (and riders of non-moving cars) can shoot from windows
-  if (p.role === 'cop' && p.seat > 0 && G.police && G.police.stars >= 3) {
+  if (p.role === 'cop' && p.seat > 0 && G.police && G.police.stars >= 3 && !(G.game && G.game.inCutscene)) {
     const pl = G.player; if (pl && !pl.dead && dist2(p.x, p.z, pl.x, pl.z) < 30 * 30) { p.aiming = true; p.aimPitch = 0; if (p.cool <= 0) { const e = aimError(p, pl, Math.hypot(pl.x - p.x, pl.z - p.z)); p.shootAt(pl.x + e.x, pl.y + 1.2 + e.y, pl.z + e.z, { infinite: true, rateMul: 2.2, spreadMul: 2 }); } } else p.aiming = false;
     return;
   }
@@ -740,6 +740,8 @@ function copBrain(p, dt) {
   p.faceOverride = null;
   const pl = G.player; const stars = G.police ? G.police.stars : 0;
   if (p.mode === 'flee') return civBrain(p, dt);
+  // during a cutscene the police stand down and let the scene play; the pursuit resumes afterwards
+  if (G.game && G.game.inCutscene) { p.aiming = false; p.target = null; p.move.x = p.move.z = 0; p.speedTarget = 0; return; }
   if (stars > 0 && pl && !pl.dead) {
     p.target = pl;
     const d = dist2(p.x, p.z, pl.x, pl.z);
