@@ -1,7 +1,10 @@
-// Shops and services: Ammu-Nation, food joints, Pay 'n' Spray, safehouse, hospitals/police blips, map pickups.
+// Shops and services: Ammu-Nation (weapon dealers), food joints, drive-in Pay 'n' Spray garages,
+// safehouse save icon, hospitals/police blips, map pickups.
+import * as THREE from 'three';
 import { G } from './state.js';
-import { clamp, dist2, rrange, pick, fmtMoney } from './util.js';
+import { clamp, dist2, rrange, pick, lerp, lerpAngle, fmtMoney } from './util.js';
 import { CLS } from './mapdata.js';
+import { Ped } from './peds.js';
 
 const FOOD = {
   burger: { name: 'Burger Bonanza', item: 'Bonanza Burger', cost: 10, heal: 45, color: '#ff9a2a' },
@@ -10,9 +13,45 @@ const FOOD = {
 };
 const PAINT = [0xc0c0c8, 0x1d1d22, 0xf2f2f2, 0x9a1c1c, 0x1c3a8a, 0x2a6a3a, 0xb58a1a, 0x5a5a66, 0x7a3a9a, 0xd06a1c, 0x3a7a9a, 0xe8d8b0, 0xff4fa0, 0x39c4a8];
 
+// ---------------------------------------------------------------- small generated textures
+let _signTex = null, _doorTex = null, _glowTex = null, _saveTex = null;
+function saveTexture() {
+  if (_saveTex) return _saveTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  x.fillStyle = '#f4f2ea'; x.fillRect(0, 0, 128, 128);
+  x.strokeStyle = '#cfcabb'; x.lineWidth = 4; x.strokeRect(6, 6, 116, 116);
+  x.fillStyle = '#2b6cb0'; x.fillRect(0, 0, 128, 26);
+  x.fillStyle = '#e8e6dd'; x.fillRect(38, 40, 52, 26);
+  x.fillStyle = '#2e9e4a'; x.font = 'bold 34px Arial'; x.textAlign = 'center'; x.fillText('SAVE', 64, 104);
+  _saveTex = new THREE.CanvasTexture(c); return _saveTex;
+}
+function signTexture() {
+  if (_signTex) return _signTex;
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128; const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, '#123a63'); g.addColorStop(1, '#0a2340'); x.fillStyle = g; x.fillRect(0, 0, 512, 128);
+  x.strokeStyle = '#5fd8e0'; x.lineWidth = 6; x.strokeRect(6, 6, 500, 116);
+  x.fillStyle = '#f2f7ff'; x.font = 'bold 58px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText("PAY 'N' SPRAY", 256, 66);
+  _signTex = new THREE.CanvasTexture(c); _signTex.anisotropy = 4; return _signTex;
+}
+function doorTexture() {
+  if (_doorTex) return _doorTex;
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256; const x = c.getContext('2d');
+  x.fillStyle = '#c9d2d8'; x.fillRect(0, 0, 128, 256);
+  for (let y = 0; y < 256; y += 16) { x.fillStyle = (y / 16) % 2 ? '#b3bcc4' : '#dde5ea'; x.fillRect(0, y, 128, 14); x.fillStyle = '#8f989f'; x.fillRect(0, y + 14, 128, 2); }
+  _doorTex = new THREE.CanvasTexture(c); return _doorTex;
+}
+function glowTexture() {
+  if (_glowTex) return _glowTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  _glowTex = new THREE.CanvasTexture(c); return _glowTex;
+}
+
 export class Places {
   constructor() {
     this.shops = []; this.cool = 0; this.pns = []; this.homePanel = null;
+    this.busy = false; this.iconT = 0;
     const L = G.landmarks;
     const add = (id, opts) => { const l = L[id]; if (l) this.shops.push({ id, l, ...opts }); };
     for (const id of ['ammu_a', 'ammu_b', 'ammu_c']) add(id, { kind: 'ammu', blip: { color: '#d84a3a', text: 'A', icon: 'text', label: 'Ammu-Nation' } });
@@ -25,19 +64,31 @@ export class Places {
     for (const id of ['police_hq', 'police_b', 'police_c']) add(id, { kind: 'police', blip: { color: '#4a7be0', text: '★', icon: 'text', label: 'Police station' } });
     add('gym', { kind: 'gym', blip: { color: '#ff7a9a', text: 'G', icon: 'text', label: 'Gym' } });
     for (const s of this.shops) { this.makeBlip(s); this.makeMarker(s); }
+    // build the drive-in garages, the weapon-dealer NPCs and the safehouse save icon
+    for (const s of this.shops) if (s.kind === 'pns') this.buildGarage(s);
+    for (const s of this.shops) if (s.kind === 'ammu') this.buildDealer(s);
+    for (const s of this.shops) if (s.kind === 'home') this.buildSaveIcon(s);
     this.seedPickups();
   }
 
   makeBlip(s) { s.blipObj = G.blips.add({ x: s.l.door.x, z: s.l.door.z, ...s.blip, priority: 0 }); }
   makeMarker(s) {
-    if (s.kind === 'ammu' || s.kind === 'food' || s.kind === 'home' || s.kind === 'gym') {
-      s.marker = G.markers.add({ x: s.l.door.x, z: s.l.door.z, radius: 1.5, color: s.kind === 'home' ? 0x40ff80 : s.kind === 'ammu' ? 0xff4040 : 0xffb030, footOnly: true, once: false, arrow: true, onEnter: () => this.enter(s) });
+    if (s.kind === 'food' || s.kind === 'gym') {
+      s.marker = G.markers.add({ x: s.l.door.x, z: s.l.door.z, radius: 1.5, color: 0xffb030, footOnly: true, once: false, arrow: true, onEnter: () => this.enter(s) });
     } else if (s.kind === 'pns') {
-      const drop = s.l.door; s.marker = G.markers.add({ x: drop.x, z: drop.z, radius: 4.6, color: 0x39c4d8, vehicleOnly: true, once: false, arrow: true, onEnter: () => this.enter(s) });
+      const drop = s.l.door; s.marker = G.markers.add({ x: drop.x, z: drop.z, radius: 3.4, color: 0x39c4d8, vehicleOnly: true, once: false, arrow: true, onEnter: () => this.enter(s) });
+    }
+    // weapon dealers and the safehouse use the icon + interact prompt instead of a glow marker
+  }
+  // quitToTitle() removes peds / mission markers: put shops & NPCs back whenever they are missing
+  heal() {
+    for (const s of this.shops) {
+      if (s.marker && s.marker.dead) this.makeMarker(s);
+      if (s.blipObj && !G.blips.list.includes(s.blipObj)) this.makeBlip(s);
+      if (s.kind === 'ammu' && (!s.dealer || s.dealer.dead || s.dealer.removeMe)) s.dealer = this.spawnDealer(s);
+      else if (s.kind === 'ammu' && s.dealer && G.player) s.dealer.script = { type: 'stand', look: G.player };
     }
   }
-  // quitToTitle() wipes every marker in the world: put the shop markers / blips back whenever they are missing
-  heal() { for (const s of this.shops) { if (s.marker && s.marker.dead) this.makeMarker(s); if (s.blipObj && !G.blips.list.includes(s.blipObj)) this.makeBlip(s); } }
 
   seedPickups() {
     const L = G.landmarks;
@@ -49,11 +100,194 @@ export class Places {
     for (const id of ['bank', 'label', 'dealer', 'pier_shop']) near(id, 6, 4, 'star', { respawn: 300 });
   }
 
+  // ================================================================== weapon dealers
+  // a clear spot just beside a door, off the roadway, for an NPC or icon
+  doorSideSpot(s, side, fwd) {
+    const d = s.l.door, yaw = s.l.yaw, fx = Math.sin(yaw), fz = Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    const offs = [[side, fwd], [side, fwd - 0.8], [side * 1.6, fwd], [side, fwd + 0.8], [-side, fwd]];
+    for (const o of offs) {
+      const x = d.x + rx * o[0] + fx * o[1], z = d.z + rz * o[0] + fz * o[1];
+      if (G.map.roadDistAt(x, z) > 1.0 && G.world.groundY(x, z) > 0.6 && G.world.placement.propClear(x, z, 0.8)) return { x, z };
+    }
+    return { x: d.x + rx * side + fx * fwd, z: d.z + rz * side + fz * fwd };
+  }
+  dealerSpot(s) { return this.doorSideSpot(s, 1.9, 0.6); }
+  spawnDealer(s) {
+    const p = this.dealerSpot(s);
+    const app = G.models.peds.randomAppearance(Math.random, { role: 'worker' });
+    app.hat = 'cap'; app.hatColor = 0x8a2020; app.shirt = 0x6a2a2a; app.shirtType = 'vest'; app.bandana = null;
+    const ped = new Ped({ x: p.x, z: p.z, role: 'script', appearance: app, name: 'Ammu-Nation clerk' });
+    ped.mission = false; ped.noDespawn = true; ped.invincible = true; ped.canDrop = false; ped.brave = true;
+    ped.script = { type: 'stand', look: G.player };
+    G.peds.add(ped);
+    return ped;
+  }
+  buildDealer(s) {
+    if (G.interactions) {
+      s.dealerSpot = this.dealerSpot(s);
+      s.dealerInteract = G.interactions.add({ x: s.dealerSpot.x, z: s.dealerSpot.z, radius: 3.0, footOnly: true, label: 'Buy weapons', onInteract: () => this.openAmmu(s) });
+    }
+  }
+  openAmmu(s) {
+    if (this.cool > 0) return;
+    if (G.missions && G.missions.blocksShops) { G.hud.notify('Not now — finish what you are doing'); return; }
+    this.cool = 1.5; G.game.pause(true, true); G.menus.show('shop');
+  }
+
+  // ================================================================== safehouse save icon
+  buildSaveIcon(s) {
+    const spot = this.doorSideSpot(s, 2.4, 1.2);
+    const x = spot.x, z = spot.z;
+    const gY = G.world.groundY(x, z);
+    const baseY = gY + 1.5;
+    const group = new THREE.Group();
+    // little pedestal
+    const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.62, 0.5, 10), new THREE.MeshLambertMaterial({ color: 0x2a2d33 }));
+    ped.position.y = -1.25; group.add(ped);
+    // floppy disk with a "SAVE" label on both faces
+    const disc = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.25, 0.14), new THREE.MeshLambertMaterial({ color: 0x2b6cb0 }));
+    disc.add(body);
+    for (const z of [0.075, -0.075]) {
+      const label = new THREE.Mesh(new THREE.PlaneGeometry(1.02, 1.02), new THREE.MeshBasicMaterial({ map: saveTexture() }));
+      label.position.z = z; if (z < 0) label.rotation.y = Math.PI; disc.add(label);
+    }
+    const shutter = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.26, 0.02), new THREE.MeshLambertMaterial({ color: 0xc8ced6 }));
+    shutter.position.set(0, 0.44, 0.082); disc.add(shutter);
+    group.add(disc);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0x40ff80, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glow.scale.set(3.2, 3.2, 1); group.add(glow);
+    group.position.set(x, baseY, z);
+    G.scene.add(group);
+    s.icon = disc; s.iconGroup = group; s.iconBaseY = baseY;
+    if (G.interactions) s.saveInteract = G.interactions.add({ x, z, radius: 2.8, footOnly: true, label: 'Save game', onInteract: () => this.openHome() });
+  }
+
+  // ================================================================== drive-in Pay 'n' Spray
+  buildGarage(s) {
+    const l = s.l; if (!l || !l.building) return;
+    const yaw = l.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw);
+    const lp = (lx, lz) => ({ x: l.x + lx * cs + lz * sn, z: l.z - lx * sn + lz * cs });
+    const hw = l.w / 2, hd = l.d / 2;
+    const zWall = -l.d / 2 + 0.4 + Math.min(l.d - 6.5, 11);   // visible front wall of the shop
+    const bayHw = 3.0, zFront = hd + 0.2, zd = zFront - zWall, zc = (zWall + zFront) / 2;
+    const c = lp(0, zc), ground = G.world.groundY(c.x, c.z);
+    const group = new THREE.Group(); G.scene.add(group);
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a5058 });
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x2b2f35 });
+    const trimMat = new THREE.MeshLambertMaterial({ color: 0x8a9099 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x13161b });
+    const padMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x39e0e8 });
+    const put = (mesh, lx, lz, y) => { const p = lp(lx, lz); mesh.position.set(p.x, ground + y, p.z); mesh.rotation.y = yaw; group.add(mesh); return mesh; };
+    // side walls, roof, header and a dark shop interior at the back of the bay
+    for (const sgn of [-1, 1]) put(new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.6, zd + 0.2), wallMat), sgn * (bayHw + 0.15), zc, 1.8);
+    put(new THREE.Mesh(new THREE.BoxGeometry(bayHw * 2 + 0.9, 0.3, zd + 0.7), roofMat), 0, zc, 3.66);
+    put(new THREE.Mesh(new THREE.BoxGeometry(bayHw * 2 + 0.9, 0.72, 0.34), trimMat), 0, zFront, 3.34);
+    put(new THREE.Mesh(new THREE.BoxGeometry(bayHw * 2 + 0.3, 3.5, 0.2), darkMat), 0, zWall - 0.12, 1.75);
+    put(new THREE.Mesh(new THREE.BoxGeometry(bayHw * 2 + 0.5, 0.08, zd + 0.4), padMat), 0, zc, 0.05);
+    for (const sgn of [-1, 1]) put(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, zd * 0.86), glowMat), sgn * (bayHw - 0.05), zc, 0.55);
+    // illuminated sign above the door
+    put(new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), new THREE.MeshBasicMaterial({ map: signTexture() })), 0, zFront + 0.2, 4.08);
+    // the animated roller door
+    const doorH = 3.1;
+    const door = new THREE.Mesh(new THREE.BoxGeometry(bayHw * 2 - 0.5, doorH, 0.16), new THREE.MeshLambertMaterial({ map: doorTexture() }));
+    const dp = lp(0, zFront); door.position.set(dp.x, ground + doorH / 2, dp.z); door.rotation.y = yaw; group.add(door);
+    s.garage = {
+      group, door, doorH, ground, yaw, hw, hd, bayHw, zWall, zFront,
+      bay: lp(0, zWall + zd * 0.56), entry: lp(0, zFront + 2.6), exit: lp(0, zFront + 7.2),
+      doorOpen: 0, phase: 'idle', t: 0, v: null, start: null
+    };
+    this.carveGarage(s, { hw, hd, zWall, zFront, bayHw, lp });
+  }
+  // replace the solid shop collider with a footprint that leaves the bay corridor open
+  carveGarage(s, g) {
+    const W = G.world, obb = s.l.building && s.l.building.obb; if (!W || !obb) return;
+    W.removeCollider(obb); const i = W.placement.colliders.indexOf(obb); if (i >= 0) W.placement.colliders.splice(i, 1);
+    const mk = (cx, cz, hx, hz) => { const p = g.lp(cx, cz); return { x: p.x, z: p.z, hw: hx, hd: hz, yaw: s.l.yaw, h: obb.h, kind: 'garage' }; };
+    const { hw, hd, zWall, zFront, bayHw } = g;
+    const pieces = [
+      mk(0, (-hd + zWall) / 2, hw, (zWall + hd) / 2),                              // solid building behind the bay
+      mk((hw + bayHw) / 2, (zWall + zFront) / 2, (hw - bayHw) / 2, (zFront - zWall) / 2),   // right of the bay
+      mk(-(hw + bayHw) / 2, (zWall + zFront) / 2, (hw - bayHw) / 2, (zFront - zWall) / 2)   // left of the bay
+    ];
+    for (const c of pieces) { W.placement.colliders.push(c); W._indexCollider(c); }
+  }
+  doorStep(g, target, dt) {
+    if (g.doorOpen === target) return;
+    const spd = 1 / 0.7, dir = Math.sign(target - g.doorOpen);
+    g.doorOpen = clamp(g.doorOpen + dir * spd * dt, 0, 1);
+    if ((target === 0 && g.doorOpen < 0.003) || (target === 1 && g.doorOpen > 0.997)) g.doorOpen = target;
+    // roll the shutter up into the header: shrink from the bottom up, top edge fixed
+    const h = g.doorH * (1 - g.doorOpen);
+    g.door.visible = g.doorOpen < 0.985;
+    g.door.scale.y = Math.max(0.03, 1 - g.doorOpen);
+    g.door.position.y = g.ground + g.doorH * g.doorOpen + h / 2;
+  }
+  startGarage(s) {
+    const pl = G.player, v = pl.vehicle, g = s.garage;
+    if (!v || !g || this.busy || g.phase !== 'idle') return;
+    if (G.missions && G.missions.blocksShops) return;
+    if (pl.money < 100) { if (this.cool <= 0) { G.hud.notify("Pay 'n' Spray: not enough cash ($100)"); this.cool = 3; } return; }
+    this.busy = true; this.cool = 8;
+    g.v = v; g.phase = 'open'; g.t = 0; g.start = { x: v.x, z: v.z, yaw: v.yaw };
+    pl.controlEnabled = false; v.input.throttle = 0; v.input.brake = 1; v.input.handbrake = true; v.vx = v.vz = 0;
+    G.audio && G.audio.play('door_open', { pos: v });
+    G.hud.fade(0, 10); if (G.camera && G.camera.snapTo) G.camera.snapTo(v);
+  }
+  updateGarage(g, dt) {
+    const pl = G.player, v = g.v;
+    if (!v || v.exploded) { g.phase = 'idle'; g.v = null; this.busy = false; if (pl) pl.controlEnabled = true; return; }
+    switch (g.phase) {
+      case 'open':
+        this.doorStep(g, 1, dt); if (g.doorOpen >= 1) { g.phase = 'enter'; g.t = 0; }
+        break;
+      case 'enter': {
+        g.t += dt; const k = Math.min(1, g.t / 1.3), e = k * k * (3 - 2 * k), st = g.start;
+        v.x = lerp(st.x, g.bay.x, e); v.z = lerp(st.z, g.bay.z, e);
+        v.yaw = lerpAngle(st.yaw, g.yaw + Math.PI, e);
+        v.vx = v.vz = 0; v.y = G.world.groundY(v.x, v.z) + v.def.wheelRadius; v.groundY = v.y;
+        if (k >= 1) { g.phase = 'close'; G.audio && G.audio.play('door_close', { pos: v }); }
+        break;
+      }
+      case 'close':
+        this.doorStep(g, 0, dt); if (g.doorOpen <= 0) { g.phase = 'spray'; g.t = 0; G.audio && G.audio.play('spray', { pos: v }); }
+        break;
+      case 'spray':
+        g.t += dt; if (g.t > 1.0) { g.phase = 'fade'; g.t = 0; G.hud.fade(1, 500); }
+        break;
+      case 'fade':
+        g.t += dt;
+        if (g.t > 0.6) {
+          if (pl.money >= 100) pl.money -= 100;
+          v.repair(); const col = pick(PAINT); v.model.setBodyColor && v.model.setBodyColor(col); v.colors.body = col;
+          G.police.clear(); for (const c of G.vehicles.list.slice()) if (c.owner === 'police' && !c.mission && c !== v) G.vehicles.remove(c);
+          const ex = g.exit; v.x = ex.x; v.z = ex.z; v.yaw = g.yaw; v.vx = v.vz = 0; v.y = G.world.groundY(v.x, v.z) + v.def.wheelRadius; v.groundY = v.y; v.input.handbrake = true;
+          if (G.camera && G.camera.snapTo) G.camera.snapTo(v);
+          G.audio && G.audio.play('cash');
+          G.hud.fade(0, 600); g.phase = 'exit'; g.t = 0;
+        }
+        break;
+      case 'exit':
+        g.t += dt;
+        if (g.t > 0.6) {
+          pl.controlEnabled = true; this.busy = false;
+          G.hud.notify("Pay 'n' Spray: -$100, vehicle resprayed, heat gone");
+          g.phase = 'reclose'; G.audio && G.audio.play('door_close', { pos: v });
+        }
+        break;
+      case 'reclose':
+        this.doorStep(g, 0, dt); if (g.doorOpen <= 0) { g.phase = 'idle'; g.v = null; }
+        break;
+    }
+  }
+
+  // ================================================================== services
   enter(s) {
     if (this.cool > 0) return; const pl = G.player;
     if (G.missions && G.missions.blocksShops) return;
     switch (s.kind) {
-      case 'ammu': this.cool = 1.5; G.game.pause(true, true); G.menus.show('shop'); break;
+      case 'ammu': this.openAmmu(s); break;
       case 'food': {
         this.cool = 2; const f = s.food;
         if (pl.health >= pl.maxHealth) { G.hud.notify('You are not hungry'); return; }
@@ -62,13 +296,14 @@ export class Places {
         G.hud.notify(`${f.item}: -$${f.cost}, +${f.heal} health`);
         break;
       }
-      case 'home': this.cool = 1.5; this.openHome(); break;
+      case 'home': this.openHome(); break;
       case 'gym': this.cool = 2; G.hud.notify(G.missions && G.missions.isDone('m04') ? 'Sal runs a fight club here. Look for the cyan G marker outside.' : "Sal's Gym is closed for now. Come back later."); break;
-      case 'pns': this.paySpray(s); break;
+      case 'pns': this.startGarage(s); break;
     }
   }
 
   openHome() {
+    if (this.cool > 0) return;
     const pl = G.player; G.game.pause(true, true);
     const can = G.game.canSave();
     let p = document.getElementById('homePanel'); if (!p) { p = document.createElement('div'); p.id = 'homePanel'; document.body.appendChild(p); }
@@ -81,23 +316,12 @@ export class Places {
     G.input.unlock();
   }
 
-  async paySpray(s) {
-    const pl = G.player; const v = pl.vehicle; if (!v || this.busy) return;
-    if (v.isBike && false) return;
-    const cost = 100;
-    if (G.police.stars >= 5 && false) return;
-    if (pl.money < cost) { G.hud.notify("Pay 'n' Spray: not enough cash ($100)"); this.cool = 3; return; }
-    this.busy = true; this.cool = 6;
-    pl.money -= cost; pl.controlEnabled = false; v.input.throttle = 0; v.input.brake = 1; v.input.handbrake = true;
-    G.hud.fade(1, 500); await new Promise(r => setTimeout(r, 650));
-    v.repair(); const col = pick(PAINT); v.model.setBodyColor && v.model.setBodyColor(col); v.colors.body = col;
-    G.police.clear(); for (const c of G.vehicles.list.slice()) if (c.owner === 'police' && !c.mission && c !== v) G.vehicles.remove(c);
-    G.audio.play('spray'); G.audio.play('cash');
-    await new Promise(r => setTimeout(r, 650));
-    G.hud.fade(0, 700); pl.controlEnabled = true; v.input.handbrake = false; v.input.brake = 0;
-    G.hud.notify("Pay 'n' Spray: -$100, vehicle resprayed, heat gone");
-    this.busy = false;
+  update(dt) {
+    if (this.cool > 0) this.cool -= dt;
+    this.healT = (this.healT || 0) - dt; if (this.healT <= 0) { this.healT = 1.5; this.heal(); }
+    for (const s of this.shops) if (s.garage && s.garage.phase !== 'idle') this.updateGarage(s.garage, dt);
+    // save icons bob and spin
+    this.iconT += dt;
+    for (const s of this.shops) if (s.icon) { s.icon.rotation.y += dt * 1.3; s.iconGroup.position.y = s.iconBaseY + Math.sin(this.iconT * 2.1) * 0.12; }
   }
-
-  update(dt) { if (this.cool > 0) this.cool -= dt; this.healT = (this.healT || 0) - dt; if (this.healT <= 0) { this.healT = 1.5; this.heal(); } }
 }

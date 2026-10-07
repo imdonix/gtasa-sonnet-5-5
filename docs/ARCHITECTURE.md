@@ -27,7 +27,8 @@ Global registry: `import { G } from './state.js'` (G.world, G.player, G.peds, G.
 | police.js | wanted level, crime hooks, police cars/cops/roadblocks/heli, arrests |
 | population.js | ambient traffic / pedestrian / gang spawning + culling around the player |
 | pickups.js | pickups, knockable props, world markers (`G.markers`), radar blips (`G.blips`) |
-| places.js | shops (Ammu-Nation, food, Pay 'n' Spray, safehouse save) |
+| places.js | shops: food joints, Ammu-Nation **weapon-dealer NPCs**, **drive-in Pay 'n' Spray garages** (roller-door animation + respray sequence), **safehouse save icon**; each uses the interaction prompt |
+| interactions.js | generic "press E to interact" registry + prompt (`G.interactPrompt`) for dealers, the save icon, etc. |
 | activities.js | spray tags, taxi, vigilante, street races |
 | missions.js + story.js + story2.js + story4.js + storylib.js | async mission runner + the 24-mission story (Chapters I & II) |
 | lifebrain.js / ambient.js / ambient_scenes.js / events_world.js | pedestrian activities, ambient scenes (bus stops, beach, clubs...), 8 random world events |

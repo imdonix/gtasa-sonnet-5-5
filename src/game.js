@@ -89,6 +89,7 @@ export class Game {
     G.landmarks = world.landmarks;
     // optional modules
     try { const { MissionManager } = await import('./missions.js'); G.missions = new MissionManager(); } catch (e) { console.error('missions failed to load', e); }
+    try { const { Interactions } = await import('./interactions.js'); G.interactions = new Interactions(); } catch (e) { console.error('interactions failed to load', e); }
     try { const { Places } = await import('./places.js'); G.places = new Places(); } catch (e) { console.error('places failed to load', e); }
     try { const { Activities, Tags } = await import('./activities.js'); G.activities = new Activities(); G.tags = new Tags(); } catch (e) { console.error('activities failed to load', e); }
     G.menus = new Menus();
@@ -331,8 +332,10 @@ export class Game {
   sim(dt) {
     G.time += dt;
     G.camera.cineTick(dt);
+    if (G.interactions) G.interactions.scan();
     G.nav.update(dt);
     G.peds.update(dt);
+    if (G.interactions) G.interactions.consume();
     G.vehicles.update(dt);
     G.combat.update(dt);
     G.police.update(dt);
@@ -395,6 +398,7 @@ export class Game {
       if (best) text = best.driver ? `<kbd>F</kbd> Hijack ${best.name}` : `<kbd>F</kbd> Enter ${best.name}`;
     }
     if (G.promptOverride) text = G.promptOverride;
+    if (G.interactPrompt) text = G.interactPrompt;
     if (text !== this._promptText) { this._promptText = text; G.hud.prompt(text); }
   }
 }

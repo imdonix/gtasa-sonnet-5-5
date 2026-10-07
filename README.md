@@ -32,7 +32,8 @@ bank heist and a helicopter finale. Plus 4 optional side quests and an open Los 
   Day/night cycle (24 min/day), weather (clear, smog, cloudy, rain), lit windows, street lamps, headlights, working traffic signals.
 * **Living world** — ambient traffic following lanes and obeying signals, pedestrians on sidewalks, panic and fights, gangs in their turf
   (**Emerald Row**, Violet Kings, Los Soles, Blue Line), rival gang raids, recruitable homies (press G near Emerald Row members).
-* **Side content** — 4 side quests (after mission 4), random street events (accidents, muggings, chases, drive-bys), Ammu-Nation, food joints (health), safehouse saves, spray-tag collectibles (28), taxi duty (N in a taxi),
+* **Side content** — 4 side quests (after mission 4), random street events (accidents, muggings, chases, drive-bys), **weapon dealers** (walk up and press E to buy), food joints (health),
+  **drive-in Pay 'n' Spray garages** (pull in, the roller door closes, the car comes out resprayed and heat is gone), a **safehouse save icon** (press E), spray-tag collectibles (28), taxi duty (N in a taxi),
   vigilante duty (N in a police car), 3 street races, stats screen, full map with waypoint (M).
 
 ### Controls
@@ -42,6 +43,7 @@ bank heist and a helicopter finale. Plus 4 optional side quests and an open Los 
 | Sprint / jump / crouch | `Shift` / `Space` / `C` |
 | Fire / aim | left mouse / hold right mouse |
 | Reload / switch weapon | `R` / `Q` `E`, mouse wheel, `1`–`9` |
+| Interact (weapon dealer, save icon) | `E` (near the icon — otherwise `E` switches weapon) |
 | Enter / exit / hijack vehicle | `F` |
 | Drive | `W` accelerate, `S` brake & reverse, `A D` steer, `Space` handbrake, `H` horn, `C` look back |
 | Radio | `R` next, `T` previous, `X` off |
@@ -51,7 +53,7 @@ bank heist and a helicopter finale. Plus 4 optional side quests and an open Los 
 | Recruit homie / duty | `G` near an Emerald Row member / `N` in a taxi or police car |
 | Cheats (type while playing) | `cheatmode` lists them: `hesoyam`, `weaponset`, `aezakmi`, `catchacar`, `nightfall`, `sunrise`, `goodday`, `bigbang` |
 
-Progress is saved at the safehouse (green house marker in Ganton) and automatically after missions (`F5` quick-saves when no mission is running).
+Progress is saved at the safehouse **save icon** in Ganton (walk up and press `E`) and automatically after missions (`F5` quick-saves when no mission is running).
 Settings (volume, sensitivity, FOV, shadows, view distance) are in the pause menu and persist.
 
 ## About the map

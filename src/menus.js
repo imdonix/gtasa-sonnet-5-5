@@ -90,7 +90,7 @@ export class Menus {
       <div><h2>On foot</h2><table class="tbl">
       <tr><td>${k('W')}${k('A')}${k('S')}${k('D')}</td><td>Move</td></tr><tr><td>${k('Mouse')}</td><td>Look / aim</td></tr><tr><td>${k('Shift')}</td><td>Sprint (stamina)</td></tr>
       <tr><td>${k('Space')}</td><td>Jump</td></tr><tr><td>${k('C')}</td><td>Crouch</td></tr><tr><td>${k('LMB')}</td><td>Fire / punch / swing</td></tr><tr><td>${k('RMB')}</td><td>Aim (hold)</td></tr>
-      <tr><td>${k('R')}</td><td>Reload</td></tr><tr><td>${k('Q')}${k('E')} / wheel</td><td>Previous / next weapon</td></tr><tr><td>${k('1')}-${k('9')}</td><td>Weapon slot</td></tr><tr><td>${k('F')}</td><td>Enter / exit vehicle, jack cars</td></tr></table></div>
+      <tr><td>${k('R')}</td><td>Reload</td></tr><tr><td>${k('Q')}${k('E')} / wheel</td><td>Previous / next weapon (press E near an icon to interact)</td></tr><tr><td>${k('1')}-${k('9')}</td><td>Weapon slot</td></tr><tr><td>${k('E')}</td><td>Interact: talk to weapon dealers, use the save icon</td></tr><tr><td>${k('F')}</td><td>Enter / exit vehicle, jack cars</td></tr></table></div>
       <div><h2>In a vehicle</h2><table class="tbl"><tr><td>${k('W')} / ${k('S')}</td><td>Accelerate / brake &amp; reverse</td></tr><tr><td>${k('A')} ${k('D')}</td><td>Steer</td></tr><tr><td>${k('Space')}</td><td>Handbrake</td></tr>
       <tr><td>${k('H')}</td><td>Horn</td></tr><tr><td>${k('R')} ${k('T')}</td><td>Next / previous radio station</td></tr><tr><td>${k('X')}</td><td>Radio off</td></tr><tr><td>${k('C')}</td><td>Look behind (hold)</td></tr>
       <tr><td>${k('N')}</td><td>Siren / start vigilante, taxi duty</td></tr><tr><td>${k('RMB')} ${k('LMB')}</td><td>Drive-by with pistols / SMG</td></tr><tr><td>${k('F')}</td><td>Exit</td></tr></table></div>

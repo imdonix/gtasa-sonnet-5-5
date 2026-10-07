@@ -177,7 +177,7 @@ export class Player extends Ped {
     const I = G.input; const W = this.weapon;
     // switching
     if (I.wheel !== 0) { if (this.aimMode && W.scope) G.camera.scopeZoom = clamp(G.camera.scopeZoom + (I.wheel < 0 ? 0.25 : -0.25), 0, 1); else this.cycleWeapon(I.wheel > 0 ? 1 : -1); }
-    if (I.anyPressed('KeyE', 'GP_KeyE')) this.cycleWeapon(1);
+    if (I.anyPressed('KeyE', 'GP_KeyE') && !(G.interactions && G.interactions.target)) this.cycleWeapon(1);
     if (I.anyPressed('KeyQ', 'GP_KeyQ')) this.cycleWeapon(-1);
     for (const k in SLOT_KEYS) if (I.wasPressed(k)) this.selectSlot(SLOT_KEYS[k]);
     if (I.wasPressed('KeyR')) this.reload();
