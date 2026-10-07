@@ -95,6 +95,6 @@ module.exports = async (c) => {
 
   // ---- 7. side quests registered
   const sd = await c.eval(() => { const M = G.missions; return { side: M.defs.filter(d => d.side).map(d => d.id), total: M.storyTotal(), sideTotal: M.sideTotal() }; });
-  ok('side quests registered', sd.side.length >= 3 && sd.total === 14, JSON.stringify(sd));
+  ok('side quests registered', sd.side.length >= 3 && sd.total === 24, JSON.stringify(sd));
   T('DONE');
 };

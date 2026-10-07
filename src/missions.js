@@ -103,7 +103,7 @@ export class Runner {
     const pos = () => ({ x: target.x, z: target.z });
     const radius = o.radius ?? 3.2;
     if (o.text) this.objective(o.text);
-    const m = this.marker(target.x, target.z, { radius, color: o.color ?? 0xff3030, vehicleOnly: o.mode === 'vehicle', footOnly: o.mode === 'foot', once: false, arrow: o.arrow !== false, entity: o.follow ? target : null });
+    const m = this.marker(target.x, target.z, { radius, color: o.color ?? 0xff3030, vehicleOnly: o.mode === 'vehicle', footOnly: o.mode === 'foot', once: false, arrow: o.arrow !== false, entity: o.follow ? target : null, needVehicle: o.needVehicle });
     const b = o.blip === false ? null : this.blip({ x: target.x, z: target.z, color: o.blipColor ?? '#ff3030', icon: o.blipIcon || 'dot', label: o.label || 'Objective', flash: true, priority: 4, entity: o.follow ? target : null });
     const pl = G.player;
     await this.wait(() => {

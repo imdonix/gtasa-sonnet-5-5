@@ -29,7 +29,7 @@ Global registry: `import { G } from './state.js'` (G.world, G.player, G.peds, G.
 | pickups.js | pickups, knockable props, world markers (`G.markers`), radar blips (`G.blips`) |
 | places.js | shops (Ammu-Nation, food, Pay 'n' Spray, safehouse save) |
 | activities.js | spray tags, taxi, vigilante, street races |
-| missions.js + story.js + story2.js + storylib.js | async mission runner + the 14-mission story |
+| missions.js + story.js + story2.js + story4.js + storylib.js | async mission runner + the 24-mission story (Chapters I & II) |
 | lifebrain.js / ambient.js / ambient_scenes.js / events_world.js | pedestrian activities, ambient scenes (bus stops, beach, clubs...), 8 random world events |
 | story3.js | 4 optional side quests (export list, store protection, gym brawl, street medic) |
 | setpieces.js | Vinewood sign, pier + Ferris wheel, airport planes, dock cranes |
@@ -43,5 +43,5 @@ Global registry: `import { G } from './state.js'` (G.world, G.player, G.peds, G.
 ## Testing tools (tools/)
 * `node server.js 8080 &` must be running.
 * `node tools/play.js steps.js` — headless Chromium driver; steps.js exports `async (ctx)`; `ctx.eval(fn)`, `ctx.step(seconds)` (fast sim), `ctx.shot(name)` (PNG into scratchpad), `ctx.wait(ms)`.
-* `node tools/bot.js --only m05` / `--from m01 --to m14` — auto-plays the story with cheats to detect script errors.
+* `node tools/bot.js --only m05` / `--from m01 --to m24` — auto-plays the story with cheats to detect script errors.
 * `tools/make_map.py` regenerates the map images (Python + Pillow).

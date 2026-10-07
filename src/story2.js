@@ -340,7 +340,7 @@ export const STORY2 = [
   {
     id: 'm14', title: 'Blood & Concrete', needs: ['m13'], giver: 'ray', letter: 'R', color: 0xffd040, reward: 25000, respect: 25, density: 0.2, keepWanted: false,
     where: homeWhere(4.5), blocksShops: true,
-    afterDone() { G.hud.notify('Story complete! Races, tags, taxi and vigilante duty are still waiting.', 'cash'); },
+    afterDone() { G.hud.notify('Chapter I complete! Return to Ray at Grove Street — Chapter II is waiting.', 'cash'); },
     async run(r) {
       const ray0 = r.giver, pl = G.player; const home = doorOf('home'); const est = doorOf('mansion') || doorOf('label') || doorOf('home'); const dock = doorOf('bl_dock') || doorOf('home');
       G.sky.hour = 5.2; G.sky.setWeather('smog'); G.sky.lockWeather = true;

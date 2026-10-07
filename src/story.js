@@ -1,10 +1,11 @@
-// LOS SANTOS RISING - story missions 1-7 (missions 8-14 live in story2.js)
+// LOS SANTOS RISING - story missions 1-7 (missions 8-14 live in story2.js, 15-24 in story4.js)
 import { G } from './state.js';
 import { clamp, dist2, rrange, pick, TAU } from './util.js';
 import { CLS, GANG } from './mapdata.js';
 import { L, D, doorOf, dist, laneSpot, kerbSpot, walkSpot, aroundSpots, gy, look, shot, orbit, twoShot, faceEachOther, lookAt, spawnGang, spawnCops, hostileCar, besideDoor, chatter, squad, ally } from './storylib.js';
 import { DriverAI } from './driverai.js';
 import { STORY2 } from './story2.js';
+import { STORY4 } from './story4.js';
 
 const homeWhere = (side) => () => besideDoor('home', side, 1.5);
 
@@ -349,4 +350,4 @@ export const STORY1 = [
   }
 ];
 
-export const STORY = [...STORY1, ...STORY2];
+export const STORY = [...STORY1, ...STORY2, ...STORY4];

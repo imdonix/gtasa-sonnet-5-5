@@ -13,9 +13,12 @@ Chrome / Edge / Firefox with WebGL2. A mid-range GPU is enough; on slow machines
 
 ## The game
 You are **Jay Mercer**, back in Los Santos after five years away because your sister Nia has disappeared.
-The story has **14 missions** (about 1½–2 hours) — turf wars, a bike chase, a tail job, a sniper hit, a police escape,
-a harbour heist, an armoured-truck robbery, a showdown with a crooked cop and a finale at Calloway's hillside estate —
-plus 4 optional side quests and an open Los Santos to explore:
+The story has **24 missions** across two chapters (about 3–4 hours) — turf wars, a bike chase, a tail job, a sniper hit, a
+police escape, a harbour heist, an armoured-truck robbery, a showdown with a crooked cop and a finale at Calloway's hillside
+estate. **Chapter II: The Hollow Crown** continues the story after Calloway falls: the money behind him surfaces as the
+Halcyon Group, and its owner Vivian Wexler will not let the city go without a fight — a funeral defence, a stealth
+infiltration, an amphibious retrieval, an anti-air stand-off, a convoy interception, a surveillance chain, a multi-stage
+bank heist and a helicopter finale. Plus 4 optional side quests and an open Los Santos to explore:
 
 * **Driving** — 18 vehicle types (sedans, lowriders, muscle/sports cars, SUVs, vans, buses, trucks, limo, taxi, police,
   SWAT van, ambulance, motorbike, bicycle) with arcade physics, handbrake drifts, damage, fires and explosions.
@@ -70,7 +73,7 @@ It is heuristic — check `assets_custom/map_preview.png` and tune with `--roads
 ## Project layout
 See `docs/ARCHITECTURE.md` (module map) and `docs/SPEC.md` (conventions & asset formats).
 Useful dev tools (need `node server.js 8080` running and Chromium): `node tools/play.js steps.js` (headless scripted play with screenshots),
-`node tools/bot.js --from m01 --to m14` (auto-plays the whole story with cheats to catch script errors), `python3 tools/make_map.py` (regenerate the map).
+`node tools/bot.js --from m01 --to m24` (auto-plays the whole story with cheats to catch script errors), `python3 tools/make_map.py` (regenerate the map).
 
 ## Credits
 Everything in this repository — code, models, textures, story, dialogue, sound and music — was produced by AI (Claude) in a single session.

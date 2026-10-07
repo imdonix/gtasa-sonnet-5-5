@@ -72,6 +72,7 @@ const OUT = '/tmp/claude-1001/-home-tamasmagyar-Work-testgame/2244238a-7010-4c23
             // tail bot
             const cel = document.getElementById('counter'); const ctr = cel.style.display === 'none' ? '' : cel.textContent;
             if (ctr.startsWith('Distance')) { const mc = G.vehicles.list.find(v => v.name === "Marcus's coupe"); if (mc && pl.vehicle) { const v = pl.vehicle; const back = 34; v.x = mc.x - Math.sin(mc.yaw) * back; v.z = mc.z - Math.cos(mc.yaw) * back; v.yaw = mc.yaw; v.vx = mc.vx; v.vz = mc.vz; } else if (mc && !pl.vehicle) { const v = G.vehicles.list.find(q => q.mission && q !== mc && !q.wrecked); if (v) pl.enterVehicle(v, 0, true); } }
+            else if (ctr.startsWith('Tailing')) { const tg = G.vehicles.list.find(v => v.mission && v.ai && v !== pl.vehicle && !v.wrecked && v.blipObj && v.blipObj.color === '#ff5090'); if (tg && pl.vehicle) { const v = pl.vehicle; const back = 30; v.x = tg.x - Math.sin(tg.yaw) * back; v.z = tg.z - Math.cos(tg.yaw) * back; v.yaw = tg.yaw; v.vx = tg.vx; v.vz = tg.vz; } else if (tg && !pl.vehicle) { const v = G.vehicles.list.find(q => q.mission && q !== tg && !q.wrecked); if (v) pl.enterVehicle(v, 0, true); } }
             else {
               let targeted = false;
               // pickups

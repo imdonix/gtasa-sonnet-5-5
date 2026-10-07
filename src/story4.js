@@ -1,0 +1,727 @@
+// LOS SANTOS RISING - Chapter II: "THE HOLLOW CROWN" (story missions 15-24).
+// A continuation of the main story: with Calloway and Harlan gone, the money behind them
+// surfaces - the Halcyon Group and its owner, Vivian Wexler. Each mission is built around a
+// gameplay idea the base story did not use: civilian defence, a checkpoint advance, stealth and
+// alarms, an amphibious retrieval, an anti-air stand-off, convoy interception, a tail chain,
+// a multi-stage heist, a timed territory run and a helicopter finale.
+import { G } from './state.js';
+import { clamp, dist2, pick, TAU, sleep } from './util.js';
+import { GANG } from './mapdata.js';
+import { L, D, doorOf, laneSpot, kerbSpot, walkSpot, aroundSpots, gy, look, shot, twoShot, lookAt, spawnGang, hostileCar, besideDoor, squad, ally } from './storylib.js';
+import { DriverAI } from './driverai.js';
+
+const homeWhere = (side) => () => besideDoor('home', side, 1.5);
+const FAIL = (reason) => Object.assign(new Error('fail'), { isFail: true, reason });
+
+// Halcyon Group private security: suited operatives with serious hardware.
+function suits(r, cx, cz, n, o = {}) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const s = walkSpot(cx, cz, o.rmin ?? 3, o.rmax ?? 14);
+    const p = r.ped({ x: s.x, z: s.z, role: 'enemy', hostile: true, appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), weapon: pick(o.weapons || ['smg', 'ak47', 'shotgun', 'pistol']), ammo: 999, health: o.health ?? 110, blip: o.blip ? { color: '#ff3030' } : false, skill: o.skill ?? 0.38 });
+    p.sightRange = o.sightRange ?? 50; p.guard = o.guard ?? true; p.home = { x: s.x, z: s.z }; p.mode = 'loiter'; p.canDrop = true; p.gang = 0;
+    out.push(p);
+  }
+  return out;
+}
+// A patrolling guard that does not yet know the player is there: used by the stealth mission.
+// It is a plain 'script' ped (so it never auto-aggros) and the mission drives its facing + the
+// detection meter itself, then flips the guard to a real enemy when the alarm goes up.
+function watchGuard(r, x, z, o = {}) {
+  const g = r.ped({ x, z, role: 'script', appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), name: o.name || 'Guard', weapon: o.weapon || 'smg', ammo: 999, health: o.health ?? 100 });
+  g.hostile = false; g.gang = 0; g.sightRange = 0; g.guard = true; g.canDrop = true;
+  g.script = { type: 'stand' }; g.mode = 'loiter';
+  g._face = o.face ?? Math.random() * TAU; g._seed = Math.random() * TAU; g._sweep = o.sweep ?? 0.6; g._patrol = o.patrol ?? 0.3;
+  return g;
+}
+// can `a` see `b`? distance + a wide facing cone + clear line of sight.
+function canSee(a, b, maxD = 28, fov = 2.3) {
+  if (!a || !b || a.dead) return false;
+  const dx = b.x - a.x, dz = b.z - a.z; const d = Math.hypot(dx, dz);
+  if (d > maxD) return false;
+  if (d < 6) return true;
+  const face = (a.faceOverride != null ? a.faceOverride : a.yaw) || 0;
+  const dot = (dx / d) * Math.sin(face) + (dz / d) * Math.cos(face);
+  if (dot < Math.cos(fov / 2)) return false;
+  const ay = gy(a.x, a.z) + 1.6, by = gy(b.x, b.z) + 1.6;
+  return !G.world.raycast(a.x, a.z, b.x, b.z, ay, by);
+}
+
+// find a point of genuinely deep water for the amphibious mission
+function deepWater(cx, cz, rmin = 20, rmax = 90) {
+  for (let i = 0; i < 400; i++) {
+    const a = Math.random() * TAU, r = rmin + Math.random() * (rmax - rmin);
+    const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+    if (G.world.groundY(x, z) < -2) return { x, z };
+  }
+  return { x: cx, z: cz };
+}
+
+// A scripted enemy helicopter: the player cannot fly the engine's helis, so the mission moves one
+// itself (patrol / hover / flee) and fires its door gun straight from the combat system.
+function pilotHeli(r, v, o = {}) {
+  let t = 0, shootT = 0;
+  r.tick(dt => {
+    if (v.exploded) return;
+    t += dt;
+    let tx, tz;
+    if (o.fleeFrom) {
+      const f = typeof o.fleeFrom === 'function' ? o.fleeFrom() : o.fleeFrom;
+      const dx = v.x - f.x, dz = v.z - f.z, d = Math.hypot(dx, dz) || 1;
+      tx = v.x + dx / d * 36; tz = v.z + dz / d * 36;
+    } else if (o.to) {
+      tx = o.to.x + Math.cos(t * 0.4) * (o.orbit || 0); tz = o.to.z + Math.sin(t * 0.4) * (o.orbit || 0);
+    } else { tx = v.x; tz = v.z; }
+    const sp = o.speed ?? 14;
+    const dx = tx - v.x, dz = tz - v.z, d = Math.hypot(dx, dz) || 1;
+    const want = Math.min(sp, d * 1.2);
+    v.vx = dx / d * want; v.vz = dz / d * want;
+    v.x += v.vx * dt; v.z += v.vz * dt;
+    const wantY = (o.height ?? 40) + (o.rise ?? 0) * t;
+    v.y += (wantY - v.y) * Math.min(1, dt * (o.climb ?? 1.4));
+    v.yaw = Math.atan2(dx, dz); v.pitch = 0; v.roll = 0;
+    if (o.target && o.shoot !== false) {
+      shootT -= dt;
+      if (shootT <= 0) {
+        shootT = o.fireRate ?? 0.2;
+        const q = o.target;
+        let ddx = q.x - v.x, ddy = (q.y + 1) - (v.y - 2), ddz = q.z - v.z;
+        const l = Math.hypot(ddx, ddy, ddz) || 1;
+        G.combat.fire({ isHeli: true }, o.weapon || 'smg', v.x, v.y - 2, v.z, ddx / l, ddy / l, ddz / l, { dmgMul: o.dmgMul ?? 0.35, spreadMul: 1.3 });
+      }
+    }
+  });
+}
+
+// One leg of the surveillance network: follow a target car from near `from` to near `to`,
+// staying in a comfortable band (16-95 m). Too far for too long or too close loses the tail.
+async function tailSegment(r, from, to, name, o = {}) {
+  const pl = G.player;
+  const fn = G.map.nearestRoad(from.x, from.z, 300); const fp = fn ? { x: fn.x, z: fn.z } : from;
+  const tn = G.map.nearestRoad(to.x, to.z, 300); const tp = tn ? { x: tn.x, z: tn.z } : to;
+  const sp = laneSpot(fp, 1, 240);
+  const car = r.car(o.type || 'coupe', sp.x, sp.z, sp.yaw, { color: o.color ?? 0x26262e }); car.name = name;
+  const drv = r.ped({ x: sp.x, z: sp.z, role: 'script', appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), name, health: 150 });
+  drv.enterVehicle(car, 0, true);
+  const ai = new DriverAI(car, 'goto', { dest: { x: tp.x, z: tp.z }, cruise: o.cruise ?? 17, stopDist: 14 });
+  const b = r.blip({ entity: car, color: '#ff5090', label: name, flash: true, priority: 5 }); car.blipObj = b;
+  let done = false, lost = 0, close = 0;
+  const tw = { fn: () => drv.dead || car.wrecked, reason: name + ' was taken out.' };
+  r.watchers.push(tw);
+  r.tick(dt => {
+    if (done) return;
+    const pv = pl.vehicle || pl; const d = Math.hypot(pv.x - car.x, pv.z - car.z);
+    G.hud.counter(`Tailing ${name} — ${Math.round(d)} m (keep 16–95)`);
+    if (d > 120) lost += dt; else lost = Math.max(0, lost - dt * 2);
+    if (d < 11 && car.totalSpeed > 3) close += dt; else close = Math.max(0, close - dt);
+    if (lost > 8) r.abortAll(FAIL('You lost ' + name + '.'));
+    if (close > 5) r.abortAll(FAIL(name + ' made you.'));
+    if (ai.arrived || (car.totalSpeed < 0.6 && dist2(car.x, car.z, tp.x, tp.z) < 45 * 45)) done = true;
+  });
+  await r.wait(() => done);
+  r.watchers = r.watchers.filter(w => w !== tw);
+  r.removeBlip(b); car.blipObj = null; if (ai) ai.setMode('idle'); G.hud.counter(null);
+  return { car, drv };
+}
+
+export const STORY4 = [
+  // ============================================================================================ 15
+  {
+    id: 'm15', title: 'Aftermath', needs: ['m14'], giver: 'ray', letter: 'R', color: 0xffd040, reward: 5000, respect: 8, density: 0.3,
+    where: homeWhere(4.5),
+    async run(r) {
+      const ray = r.giver, pl = G.player; const home = doorOf('home');
+      const hfx = Math.sin(home.yaw), hfz = Math.cos(home.yaw), hrx = Math.cos(home.yaw), hrz = -Math.sin(home.yaw);
+      G.sky.hour = 18.4; G.sky.setWeather('smog'); G.sky.lockWeather = true;
+      const nia = r.ped({ x: home.x + 2.6, z: home.z + 1.4, role: 'script', appearance: look('nia'), name: 'Nia', health: 140 });
+      const tee = r.ped({ x: home.x + 1.1, z: home.z + 2.6, role: 'script', appearance: look('tee'), name: 'Tee', health: 140 });
+      const cody = r.ped({ x: home.x + 3.8, z: home.z + 0.2, role: 'script', appearance: look('cody'), name: 'Cody', weapon: 'pistol', health: 200 });
+      for (const p of [nia, tee, cody]) if (p.script) p.script = { type: 'stand' };
+      lookAt(ray, pl); lookAt(nia, ray); lookAt(tee, ray); lookAt(cody, ray);
+      await r.cutscene([
+        shot({ x: home.x + hfx * 17 + hrx * 5, z: home.z + hfz * 17 + hrz * 5, h: 5 }, { x: home.x + hfx * 3, z: home.z + hfz * 3, h: 1.8 }, 13, { to: { x: home.x + hfx * 12 + hrx * 8, z: home.z + hfz * 12 + hrz * 8, h: 3 }, fov: 46 }),
+        twoShot(ray, nia, 14, { dist: 4.4, side: -1, drift: 0.35 })
+      ], [
+        ['Ray', "Marcus is in the ground. We gave him the send-off he earned.", 4.6],
+        ['Jay', "Then it isn't over. Somebody paid Calloway. Somebody bigger.", 4.8],
+        ['Tee', "Hollow Kings was a shell. The money behind it came from a holding company: the Halcyon Group. Vivian Wexler.", 6.4],
+        ['Nia', "She owns half this city on paper and the rest through men like Calloway.", 5],
+        ['Ray', "She'll want her money back. And she'll want the evidence gone. We're both problems now.", 5.2]
+      ], { fadeIn: false });
+      // get the family inside
+      nia.invincible = true; tee.invincible = true;
+      nia.script = { type: 'goto', x: home.x, z: home.z, radius: 2.2, speed: 4.8 };
+      tee.script = { type: 'goto', x: home.x - 1.4, z: home.z, radius: 2.2, speed: 4.8 };
+      cody.role = 'ally'; cody.followPlayer = true; cody.skillAcc = 0.6; cody.brave = true; cody.canDrop = false; cody.script = null;
+      r.supply({ ammo: { pistol: 90, smg: 180, ak47: 120 }, equip: pl.hasGun() ? undefined : 'pistol', hp: 100, armor: 60 });
+      r.cache(home.x + 5, home.z + 4, { health: 1, armor: 1, r: 6 });
+      r.speak('Cody', "Cars! Coming up the street — get them inside!", 3.2);
+      const wave1 = suits(r, home.x, home.z, 5, { rmin: 34, rmax: 52, weapons: ['pistol', 'smg', 'pistol', 'ak47', 'smg'], sightRange: 80, health: 95 });
+      for (const p of wave1) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      await r.killAll(wave1, { text: "Drive off Wexler's <b>hit squad</b>", label: 'Hitmen' });
+      // reinforcements in cars
+      r.speak('Ray', 'More of them — two cars!', 2.8);
+      const a = laneSpot({ x: home.x + 150, z: home.z + 50 }, 1, 240);
+      const b = laneSpot({ x: home.x - 140, z: home.z - 60 }, 1, 240);
+      const cars = [hostileCar(r, 'suv', a.x, a.z, a.yaw, { n: 2, gang: 0, weapon: 'smg', speed: 26, blip: true, color: 0x101018, health: 80 }),
+                    hostileCar(r, 'suv', b.x, b.z, b.yaw, { n: 2, gang: 0, weapon: 'pistol', speed: 26, blip: true, color: 0x101018, health: 80 })];
+      await r.killAll(cars.flatMap(c => c.peds), { text: 'Stop the <b>reinforcements</b>', label: 'Halcyon' });
+      // the lieutenant runs: chase him for the phone
+      r.speak('Tee', "One got clear! Follow him — he'll lead us to Wexler!", 3.4);
+      const ls = laneSpot({ x: home.x + 80, z: home.z - 40 }, 1, 240);
+      const lcar = r.car('suv', ls.x, ls.z, ls.yaw, { color: 0x0a0a10 }); lcar.health = lcar.maxHealth = 900; lcar.name = 'Halcyon SUV';
+      const lt = r.ped({ x: ls.x, z: ls.z, role: 'script', appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), name: 'Halcyon lieutenant', weapon: 'smg', ammo: 999, health: 130 });
+      lt.enterVehicle(lcar, 0, true);
+      const dest = doorOf('ls_warehouse') || home;
+      const lai = new DriverAI(lcar, 'goto', { dest: { x: dest.x, z: dest.z }, cruise: 30, aggressive: true, ignoreLights: true, stopDist: 15 });
+      const lb = r.blip({ entity: lcar, color: '#ff3030', label: 'Lieutenant', flash: true, priority: 5 }); lcar.blipObj = lb;
+      r.objective('Chase the <b>lieutenant</b> and take him out');
+      let bailed = false;
+      r.tick(dt => {
+        if (!bailed && (lcar.health < lcar.maxHealth * 0.55 || lcar.wrecked)) {
+          bailed = true; lai.setMode('idle'); lcar.input.handbrake = true;
+          lt.exitVehicle(false); lt.role = 'enemy'; lt.hostile = true; lt.target = pl; lt.setMode('attack', 90); lt.aggroT = 90; lt.sightRange = 90;
+        }
+        const d = Math.hypot(lcar.x - (pl.vehicle || pl).x, lcar.z - (pl.vehicle || pl).z);
+        r._ld = (d > 430 && !lt.dead && !bailed ? (r._ld || 0) + dt : 0); if (r._ld > 14) r.abortAll(FAIL('The lieutenant got away.'));
+      });
+      await r.wait(() => lt.dead);
+      r.removeBlip(lb);
+      const px = lt.x, pz = lt.z;
+      await new Promise(res => { r.pickup('tag', px, pz, { radius: 2.4, onCollect: () => res(true) }); r.objective("Grab the lieutenant's <b>phone</b>"); r.blip({ x: px, z: pz, color: '#ff4fe0', label: 'Phone', flash: true, priority: 5 }); });
+      await r.dialogue([
+        ['Tee', "His last calls all go to one number. A fixer. The account name: Marsh — Wexler's head of security.", 5.8],
+        ['Ray', "Then Marsh is the door to Wexler. Rest up. Tomorrow we start pulling it open.", 5]
+      ]);
+      r.reward(5000, 8);
+    }
+  },
+  // ============================================================================================ 16
+  {
+    id: 'm16', title: 'The Source', needs: ['m15'], giver: 'tee', letter: 'T', color: 0xff5090, reward: 6000, respect: 8, density: 0.4,
+    where: () => besideDoor('label', 6, 4) || besideDoor('club', 6, 4),
+    async run(r) {
+      const tee = r.giver, pl = G.player; const hq = doorOf('label') || doorOf('bank') || doorOf('home'); const home = doorOf('home');
+      const fx = Math.sin(hq.yaw), fz = Math.cos(hq.yaw);
+      await r.dialogue([
+        ['Tee', "Halcyon has an accountant named Ellis. Eight years of ledgers, every account Wexler ever touched.", 5.8],
+        ['Tee', "He called me an hour ago, then security sealed the building. He's still inside.", 5],
+        ['Jay', "I'll go get him. Keep your phone on.", 2.6]
+      ]);
+      r.supply({ ammo: { ak47: 160, smg: 180, pistol: 80 }, equip: 'ak47', hp: 100, armor: 60 });
+      const ks = kerbSpot({ x: tee.x, z: tee.z }, 1, 100);
+      const car = r.car('muscle', ks.x, ks.z, ks.yaw, { color: 0x1a1a24 }); car.name = 'Stinger';
+      await r.enterVehicle(car, { text: 'Get in the <b>Stinger</b> (F)', label: 'Car' });
+      // checkpoint 1: the street perimeter (keep it car-reachable, on the kerb)
+      const c1 = kerbSpot({ x: hq.x + fx * 34, z: hq.z + fz * 34 }, 1, 160);
+      await r.goto(c1, { mode: 'any', radius: 10, text: 'Reach the <b>Halcyon building</b>', label: 'Halcyon', blipColor: '#9a4fd0', color: 0x9a4fd0, arrow: false });
+      r.speak('Tee', 'Outer guards. Clear a path!', 3);
+      const g1 = suits(r, c1.x, c1.z, 4, { rmin: 4, rmax: 16, weapons: ['smg', 'pistol', 'pistol', 'ak47'], sightRange: 60 });
+      for (const p of g1) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      await r.killAll(g1, { text: 'Clear the <b>outer guards</b>', label: 'Security' });
+      // checkpoint 2: the lobby doors
+      await r.goto({ x: hq.x, z: hq.z }, { mode: 'any', radius: 12, text: 'Advance to the <b>lobby doors</b>', label: 'Lobby', blipColor: '#9a4fd0', color: 0x9a4fd0, arrow: false });
+      const g2 = suits(r, hq.x, hq.z, 4, { rmin: 3, rmax: 12, weapons: ['ak47', 'shotgun', 'smg', 'pistol'], sightRange: 70 });
+      for (const p of g2) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      r.cache(hq.x + fx * 8, hq.z + fz * 8, { health: 2, armor: 1, r: 6 });
+      await r.killAll(g2, { text: 'Fight into the <b>lobby</b>', label: 'Security' });
+      // Ellis
+      const es = besideDoor('label', 0, 3) || { x: hq.x, z: hq.z };
+      const ellis = r.ped({ x: es.x, z: es.z, role: 'script', appearance: look('ellis'), name: 'Ellis', health: 160 });
+      ellis.invincible = true; ellis.script = { type: 'stand', look: pl };
+      await r.sleep(0.3);
+      await r.dialogue([
+        ['Ellis', "You're the Mercer kid? Thank god. Eight years of Halcyon ledgers, right here on this drive.", 5.4],
+        ['Jay', "Then let's get you out. Stay behind me.", 2.6]
+      ]);
+      ellis.role = 'ally'; ellis.followPlayer = true; ellis.brave = false; ellis.skillAcc = 0.2; ellis.script = null; ellis.give('pistol', 30, false);
+      squad(r, [ellis]); r.keepAlive(ellis, 'Ellis');
+      // escape under fire
+      G.police.setStars(2);
+      const e1 = laneSpot({ x: hq.x + 90, z: hq.z + 50 }, 1, 240);
+      const e2 = laneSpot({ x: hq.x - 90, z: hq.z - 40 }, 1, 240);
+      hostileCar(r, 'suv', e1.x, e1.z, e1.yaw, { n: 2, gang: 0, weapon: 'smg', speed: 28, blip: true, color: 0x101018, health: 80 });
+      hostileCar(r, 'suv', e2.x, e2.z, e2.yaw, { n: 2, gang: 0, weapon: 'pistol', speed: 28, blip: true, color: 0x101018, health: 80 });
+      r.speak('Tee', "Company's coming. Get Ellis to Grove Street!", 3.2);
+      await r.goto(home, { mode: 'vehicle', radius: 8, text: 'Get Ellis to <b>Grove Street</b>', label: 'Home', color: 0xffd040, blipColor: '#ffd040' });
+      await r.loseWanted('Lose the <b>cops</b>');
+      await r.dialogue([
+        ['Ellis', "Wexler keeps a private impound in Rodeo. Cars, art, and a wall of evidence she buys from dirty cops.", 5.8],
+        ['Tee', "Then that's where the black ledger is. Birdie can get us inside.", 4.2]
+      ]);
+      car.mission = false; car.owner = 'player';
+      r.reward(6000, 8);
+    }
+  },
+  // ============================================================================================ 17
+  {
+    id: 'm17', title: 'Ghost Protocol', needs: ['m16'], giver: 'birdie', letter: 'B', color: 0x40ffd0, reward: 6500, respect: 8, density: 0.2,
+    where: () => besideDoor('garage_harlan', 4, 4) || besideDoor('ammu_a', 3, 3),
+    async run(r) {
+      const birdie = r.giver, pl = G.player; const lot = doorOf('dealer') || doorOf('pns_a') || doorOf('home'); const home = doorOf('home');
+      G.sky.hour = 1.4; G.sky.setWeather('clear'); G.sky.lockWeather = true;
+      await r.dialogue([
+        ['Birdie', "Ellis gave me the layout of Wexler's impound. Cameras, dogs, the lot. I can blind the cameras from here.", 6],
+        ['Birdie', "What I can't blind is eyes. Six guards walk that yard. If one sees you and sounds the alarm, the whole place wakes up.", 6.4],
+        ['Birdie', "Take the knife. Quiet is the whole game. The black ledger's in the office.", 5]
+      ]);
+      r.give('knife', 0, true); r.give('bat', 0, false);
+      r.supply({ ammo: { pistol: 40 }, hp: 100, armor: 40 });
+      G.hud.notify('Detection fills while guards can see you. Melee is silent.');
+      // the yard
+      const spots = aroundSpots(lot.x, lot.z, 6, 8, 24);
+      const guards = [];
+      for (let i = 0; i < 6; i++) { const s = spots[i] || walkSpot(lot.x, lot.z, 8, 22); guards.push(watchGuard(r, s.x, s.z, { face: Math.random() * TAU, sweep: 0.7, patrol: 0.25, name: 'Halcyon guard', health: 95 })); }
+      const ledgers = aroundSpots(lot.x, lot.z, 2, 4, 12);
+      let alarm = false, detect = 0, done = false;
+      r.tick(dt => {
+        if (alarm || done) return;
+        let seeing = false;
+        for (const g of guards) { if (g.dead) continue; g.faceOverride = (g._face || 0) + Math.sin(G.time * 0.35 + (g._seed || 0)) * (g._patrol ? 0.9 : 0.5); if (canSee(g, pl, 26, 2.3)) seeing = true; }
+        detect = clamp(detect + (seeing ? dt * 0.85 : -dt * 0.7), 0, 1);
+        G.hud.progress('Detection', detect);
+        if (detect >= 1) {
+          alarm = true; G.hud.progress('', null); G.audio.play('wanted_up'); G.hud.notify('ALARM! The yard is awake!'); G.police.setStars(1);
+          for (const g of guards) if (!g.dead) { g.hostile = true; g.role = 'enemy'; g.sightRange = 70; g.target = pl; g.setMode('attack', 999); g.aggroT = 999; }
+          const wave = suits(r, lot.x, lot.z, 4, { rmin: 12, rmax: 28, weapons: ['smg', 'pistol', 'ak47', 'pistol'], sightRange: 70, health: 100 });
+          for (const p of wave) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; guards.push(p); }
+        }
+      });
+      // two ledgers to lift
+      for (let i = 0; i < ledgers.length; i++) {
+        const s = ledgers[i];
+        await r.goto(s, { mode: 'foot', radius: 2.6, text: `Grab the <b>ledger</b> (${i + 1}/2)`, label: 'Ledger', color: 0x40ffd0, blipColor: '#40ffd0' });
+        G.audio.play('pickup'); G.hud.notify(`Ledger ${i + 1}/2 secured`);
+        await r.sleep(0.4);
+      }
+      done = true; G.hud.progress('', null);
+      r.speak('Birdie', "That's both. Now get out before they box you in!", 3.2);
+      if (!alarm) await r.sleep(1.2);
+      const gs = kerbSpot({ x: lot.x, z: lot.z }, 1, 60);
+      const get = r.car('sedan', gs.x, gs.z, gs.yaw, { color: 0x2a2a34 }); get.name = 'Getaway'; get.locked = false;
+      r.blip({ entity: get, color: '#40ffd0', label: 'Getaway car', flash: true, priority: 4 });
+      r.objective('Escape in the <b>getaway car</b>');
+      await r.goto(home, { mode: 'any', radius: 8, text: 'Bring the ledgers to <b>Grove Street</b>', label: 'Home', color: 0xffd040, blipColor: '#ffd040' });
+      if (G.police.stars > 0) await r.loseWanted('Lose the <b>alarm response</b>');
+      await r.dialogue([
+        ['Birdie', "Two more pieces of the picture. Wexler's fingerprints on every page.", 4.6],
+        ['Birdie', "But the originals are still out there. On the water, if my intercepts are right.", 4.6]
+      ]);
+      r.reward(6500, 8);
+    }
+  },
+  // ============================================================================================ 18
+  {
+    id: 'm18', title: 'Low Tide', needs: ['m17'], giver: 'hollis', letter: 'H', color: 0x39c4d8, reward: 7000, respect: 8, density: 0.5,
+    where: () => besideDoor('pier_shop', 2, 4) || besideDoor('pier_shop', -2, 4),
+    async run(r) {
+      const hollis = r.giver, pl = G.player; const shop = doorOf('pier_shop') || doorOf('home'); const home = doorOf('home');
+      const pier = L('pier');
+      const px = pier ? pier.x : shop.x, pz = pier ? pier.z : shop.z;
+      const wp = deepWater(px, pz, 25, 85);
+      G.sky.hour = 6.6; G.sky.setWeather('clear'); G.sky.lockWeather = true;
+      await r.dialogue([
+        ['Hollis', "Word on the water: Wexler's courier scuttled his boat off the Santa Maria pier last night. The black ledger went down with it.", 6.4],
+        ['Hollis', "I marked the wreck with a buoy. It's a swim. Get to the marker and the case comes up with you.", 5.8],
+        ['Jay', "And her people?", 1.6],
+        ['Hollis', "They watch the marina. The moment you have it, they'll know.", 4.4]
+      ]);
+      r.supply({ ammo: { pistol: 60, smg: 120 }, hp: 100, armor: 40 });
+      r.blip({ x: wp.x, z: wp.z, color: '#39c4d8', label: 'Wreck', flash: true, priority: 5 });
+      G.hud.notify('Water ahead — hold forward to swim.');
+      await r.goto(wp, { mode: 'any', radius: 3.6, text: 'Swim to the <b>wreck marker</b>', label: 'Wreck', color: 0x39c4d8, blipColor: '#39c4d8' });
+      await new Promise(res => { r.pickup('tag', wp.x, wp.z, { y: 0.2, radius: 5, onCollect: () => res(true) }); r.objective('Grab the <b>ledger case</b>'); });
+      r.speak('Hollis', "Got it? Now swim — they saw you!", 3.2);
+      // pier shooters + land chase
+      G.police.setStars(2);
+      const pk = walkSpot(shop.x, shop.z, 4, 16);
+      const shooters = suits(r, pk.x, pk.z, 4, { rmin: 4, rmax: 16, weapons: ['smg', 'pistol', 'pistol', 'ak47'], sightRange: 90, health: 90 });
+      for (const p of shooters) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      const gs = kerbSpot({ x: shop.x, z: shop.z }, 1, 80);
+      const car = r.car('suv', gs.x, gs.z, gs.yaw, { color: 0x22404a }); car.name = 'Shore runner'; car.locked = false;
+      r.blip({ entity: car, color: '#39c4d8', label: 'Shore car', flash: true, priority: 4 });
+      r.objective('Get back to shore and escape in the <b>SUV</b>');
+      const c1 = laneSpot({ x: shop.x + 100, z: shop.z + 60 }, 1, 260);
+      const c2 = laneSpot({ x: shop.x - 90, z: shop.z - 50 }, 1, 260);
+      hostileCar(r, 'suv', c1.x, c1.z, c1.yaw, { n: 2, gang: 0, weapon: 'smg', speed: 28, blip: true, color: 0x101018, health: 80 });
+      hostileCar(r, 'coupe', c2.x, c2.z, c2.yaw, { n: 2, gang: 0, weapon: 'pistol', speed: 30, blip: true, color: 0x101018, health: 75 });
+      await r.goto(home, { mode: 'vehicle', radius: 8, text: 'Deliver the case to <b>Grove Street</b>', label: 'Home', color: 0xffd040, blipColor: '#ffd040' });
+      await r.loseWanted('Lose the <b>cops</b>');
+      await r.dialogue([
+        ['Hollis', "The black ledger. Wexler's whole empire in one book.", 4.4],
+        ['Tee', "Not the whole empire. The book names where the money sleeps: the vault under her own bank.", 5.2]
+      ]);
+      car.mission = false; car.owner = 'player';
+      r.reward(7000, 8);
+    }
+  },
+  // ============================================================================================ 19
+  {
+    id: 'm19', title: 'Grounded', needs: ['m18'], giver: 'ray', letter: 'R', color: 0xffd040, reward: 7500, respect: 10, density: 0.2,
+    where: homeWhere(4.5),
+    async run(r) {
+      const ray = r.giver, pl = G.player; const home = doorOf('home');
+      G.sky.hour = 15.5; G.sky.setWeather('smog'); G.sky.lockWeather = true;
+      await r.dialogue([
+        ['Ray', "Wexler sent a message. Not paper — rotor blades. A gunship and a crew are on their way to Grove.", 5.8],
+        ['Ray', "Take the launcher off the porch. When that chopper dips, put a rocket in it.", 5],
+        ['Jay', "Everybody inside. I'll handle it.", 2.6]
+      ]);
+      r.supply({ ammo: { rpg: 8, ak47: 200, smg: 150, pistol: 80 }, equip: 'rpg', hp: 100, armor: 100 });
+      G.hud.notify('RPG: hold RIGHT MOUSE to aim, LEFT MOUSE to fire.');
+      const hs = laneSpot({ x: home.x - 220, z: home.z + 60 }, 1, 280);
+      const heli = r.car('policeheli', hs.x, hs.z, 0, { color: 0x14202c }); heli.y = gy(home.x, home.z) + 40; heli.health = heli.maxHealth = 1000; heli.name = 'Halcyon gunship'; heli.sleeping = false;
+      const hb = r.blip({ entity: heli, color: '#ff3030', label: 'Gunship', flash: true, priority: 5 }); heli.blipObj = hb;
+      pilotHeli(r, heli, { to: { x: home.x, z: home.z }, orbit: 26, height: gy(home.x, home.z) + 34, speed: 12, target: pl, weapon: 'smg', dmgMul: 0.3, fireRate: 0.2, climb: 2 });
+      r.cache(home.x + 6, home.z + 6, { health: 2, armor: 2, r: 6, ammo: { rpg: 4 } });
+      const ground = [];
+      let wt = 6, waves = 0;
+      r.tick(dt => {
+        if (heli.exploded || waves >= 4) return;
+        wt -= dt;
+        if (wt <= 0) {
+          wt = 17; waves++;
+          const w = suits(r, home.x, home.z, 3 + (waves > 2 ? 1 : 0), { rmin: 30, rmax: 55, weapons: ['smg', 'ak47', 'pistol', 'shotgun'], sightRange: 80, health: 95 });
+          for (const p of w) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; } ground.push(...w);
+          G.hud.subtitle(waves === 1 ? 'Ground crew moving in!' : 'More of them!', 2.4, 'Ray');
+        }
+      });
+      await r.wait(() => heli.exploded);
+      r.removeBlip(hb);
+      G.fx.explosion(heli.x, heli.y, heli.z, 18); G.audio.play('explosion');
+      r.speak('Ray', "Chopper's down! Clean the yard!", 3);
+      for (const p of ground) if (!p.dead && !p.blipObj) p.blipObj = r.blip({ entity: p, color: '#ff3030', label: 'Halcyon', priority: 3 });
+      await r.wait(() => ground.filter(p => !p.dead).length <= 1, { timeout: 30 }).catch(() => { });
+      await r.dialogue([
+        ['Ray', "She knows we won't fold. Good. Now we take the fight to her.", 4.6],
+        ['Ray', "Tee says the ledger points at a courier run across town. Cody's got the route.", 4.8]
+      ]);
+      r.reward(7500, 10);
+    }
+  },
+  // ============================================================================================ 20
+  {
+    id: 'm20', title: 'Dead Reckoning', needs: ['m19'], giver: 'cody', letter: 'C', color: 0x40ff80, reward: 8000, respect: 8, density: 0.6,
+    where: () => besideDoor('home', -4.5, 1.5),
+    async run(r) {
+      const cody0 = r.giver, pl = G.player; const bank = doorOf('bank') || doorOf('home'); const term = doorOf('terminal') || doorOf('home'); const home = doorOf('home');
+      const cody = ally(r, 'cody', cody0.x, cody0.z, { weapon: 'smg', health: 200 }); G.peds.remove(cody0); r.giver = null; cody.name = 'Cody';
+      await r.dialogue([
+        ['Cody', "The ledger says Wexler's fixer moves the original books across town in a three-car convoy, every Thursday.", 5.8],
+        ['Cody', "From the bank to the airport. She thinks nobody's watching. We take the middle car, we take the truth.", 5.4],
+        ['Jay', "Then let's introduce ourselves.", 2.2]
+      ]);
+      r.supply({ ammo: { ak47: 200, smg: 180, pistol: 80 }, equip: 'ak47', hp: 100, armor: 80 });
+      squad(r, [cody]); r.keepAlive(cody, 'Cody');
+      const ks = kerbSpot({ x: home.x, z: home.z }, 1, 100);
+      const car = r.car('muscle', ks.x, ks.z, ks.yaw, { color: 0x1c1c26 }); car.name = 'Stinger';
+      await r.enterVehicle(car, { text: 'Get in the <b>Stinger</b> (F)', label: 'Car' });
+      // build the convoy at the bank (it only rolls once the player arrives)
+      const bs = laneSpot({ x: bank.x, z: bank.z }, 1, 140);
+      const lead = r.car('suv', bs.x, bs.z, bs.yaw, { color: 0x0a0a10 }); lead.health = lead.maxHealth = 1100; lead.name = 'Halcyon courier';
+      const ld = r.ped({ x: bs.x, z: bs.z, role: 'enemy', hostile: true, appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), weapon: 'smg', ammo: 999, health: 120, skill: 0.35 }); ld.enterVehicle(lead, 0, true); ld.sightRange = 0;
+      const lg = r.ped({ x: bs.x, z: bs.z, role: 'enemy', hostile: true, appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), weapon: 'pistol', ammo: 999, health: 110, skill: 0.35 }); lg.enterVehicle(lead, 1, true); lg.sightRange = 0;
+      const f1 = hostileCar(r, 'suv', bs.x - 14 * Math.sin(bs.yaw), bs.z - 14 * Math.cos(bs.yaw), bs.yaw, { n: 2, gang: 0, weapon: 'smg', mode: 'follow', speed: 25, color: 0x0a0a10, health: 80, noBail: true });
+      f1.v.ai.setMode('follow', { leader: lead, gap: 12 }); f1.v.ai.aggressive = true;
+      const f2 = hostileCar(r, 'suv', bs.x + 15 * Math.sin(bs.yaw), bs.z + 15 * Math.cos(bs.yaw), bs.yaw, { n: 2, gang: 0, weapon: 'pistol', mode: 'follow', speed: 25, color: 0x0a0a10, health: 80, noBail: true });
+      f2.v.ai.setMode('follow', { leader: lead, gap: 12 }); f2.v.ai.aggressive = true;
+      const lb = r.blip({ entity: lead, color: '#ff3030', label: 'Courier', flash: true, priority: 5 }); lead.blipObj = lb;
+      await r.goto({ x: bank.x, z: bank.z }, { mode: 'vehicle', radius: 70, text: 'Intercept the <b>convoy</b>', label: 'Bank', color: 0xff3030, blipColor: '#ff3030', arrow: false });
+      const lai = new DriverAI(lead, 'goto', { dest: { x: term.x, z: term.z }, cruise: 23, aggressive: true, ignoreLights: true, stopDist: 16 });
+      r.speak('Cody', 'There they are! Stop the middle car — take out the escorts!', 3.4);
+      let stopped = false;
+      r.tick(dt => {
+        if (stopped) return;
+        if (lead.health < lead.maxHealth * 0.5 || lead.wrecked || !lead.driver || lead.driver.dead) {
+          stopped = true; lai.setMode('idle'); lead.input.handbrake = true;
+          for (const p of lead.occupants()) { p.exitVehicle(false); p.role = 'enemy'; p.hostile = true; p.target = pl; p.setMode('attack', 90); p.aggroT = 90; p.sightRange = 80; }
+        }
+        const d = Math.hypot(lead.x - (pl.vehicle || pl).x, lead.z - (pl.vehicle || pl).z);
+        r._cd = (d > 420 && !stopped ? (r._cd || 0) + dt : 0); if (r._cd > 16) r.abortAll(FAIL('The convoy reached the airport.'));
+      });
+      await r.wait(() => stopped);
+      r.removeBlip(lb);
+      r.cache(lead.x, lead.z, { health: 1, armor: 1, r: 7 });
+      const foes = [ld, lg, ...f1.peds, ...f2.peds].filter(p => !p.dead);
+      if (foes.length) await r.killAll(foes, { text: 'Eliminate the <b>escorts</b>', label: 'Escorts' });
+      r.speak('Cody', 'The books are in the back. Grab them!', 2.8);
+      await new Promise(res => { r.pickup('tag', lead.x + 1, lead.z, { radius: 3.2, onCollect: () => res(true) }); r.objective('Grab the <b>ledger</b>'); r.blip({ x: lead.x + 1, z: lead.z, color: '#40ff80', label: 'Ledger', flash: true, priority: 5 }); });
+      G.police.setStars(3);
+      r.speak('Cody', 'Airport security called it in! Get us home!', 3.2);
+      await r.goto(home, { mode: 'vehicle', radius: 8, text: 'Bring the ledger to <b>Grove Street</b>', label: 'Home', color: 0xffd040, blipColor: '#ffd040' });
+      await r.loseWanted('Lose the <b>cops</b>');
+      await r.dialogue([
+        ['Cody', "Original books. Every dollar, every name.", 3.6],
+        ['Cody', "Last page is a vault schedule. Wexler keeps the crown jewels in her own bank, Pershing Square.", 5.2]
+      ]);
+      car.mission = false; car.owner = 'player';
+      r.reward(8000, 8);
+    }
+  },
+  // ============================================================================================ 21
+  {
+    id: 'm21', title: 'Wiretap', needs: ['m20'], giver: 'tee', letter: 'T', color: 0xff5090, reward: 8500, respect: 8, density: 0.5,
+    where: () => besideDoor('label', 6, 4) || besideDoor('club', 6, 4),
+    async run(r) {
+      const tee = r.giver, pl = G.player;
+      await r.dialogue([
+        ['Tee', "The convoy was a decoy. The real names never leave the bank — but the people who move them do.", 5.8],
+        ['Tee', "Three of Wexler's people make the rounds tonight. Follow each one to the next. Don't get made.", 5.4],
+        ['Jay', "Give me the first address.", 2.2]
+      ]);
+      r.supply({ ammo: { pistol: 60, smg: 120 }, hp: 100, armor: 40 });
+      const segs = [
+        { from: D('Ganton') || D('Jefferson'), to: D('Idlewood') || D('Willowfield'), name: 'Fisk' },
+        { from: D('Idlewood') || D('Willowfield'), to: D('Market') || D('Commerce'), name: 'Dandy' },
+        { from: D('Market') || D('Commerce'), to: D('Pershing Square') || D('Downtown Financial'), name: 'Marsh' }
+      ];
+      const ks = kerbSpot({ x: tee.x, z: tee.z }, 1, 100);
+      const car = r.car('sports', ks.x, ks.z, ks.yaw, { color: 0x2a2a34 }); car.name = 'Ghost'; car.locked = false;
+      r.blip({ entity: car, color: '#40ff80', label: 'Ghost', flash: true, priority: 4 });
+      await r.enterVehicle(car, { text: 'Get in the <b>Ghost</b> (F)', label: 'Ghost' });
+      for (let i = 0; i < segs.length; i++) {
+        const s = segs[i]; if (!s.from || !s.to) { r.speak('Tee', 'I lost the feed on that one.', 2.6); continue; }
+        r.speak('Tee', `Target ${i + 1}: ${s.name}. Stay back, keep them on screen.`, 3.4);
+        await tailSegment(r, s.from, s.to, s.name, { cruise: 16 + i * 2 });
+        await r.sleep(0.8);
+        r.speak(s.name, i === 0 ? '...tell the boss the books are clean.' : i === 1 ? '...move it to the vault tonight.' : "...the vault's ready. No names on the door.", 3.2);
+        await r.sleep(1.2);
+      }
+      await r.dialogue([
+        ['Tee', "Every one of them went to the same place: Los Santos Savings and Trust. The vault's under the bank.", 6],
+        ['Tee', "Wexler keeps the crown ledger there. If we want her, we take it out of the ground.", 5.2],
+        ['Jay', "Then we break in.", 2]
+      ]);
+      car.mission = false; car.owner = 'player';
+      r.reward(8500, 8);
+    }
+  },
+  // ============================================================================================ 22
+  {
+    id: 'm22', title: 'Break In', needs: ['m21'], giver: 'birdie', letter: 'B', color: 0x40ffd0, reward: 12000, respect: 12, density: 0.4,
+    where: () => besideDoor('garage_harlan', 4, 4) || besideDoor('ammu_a', 3, 3),
+    async run(r) {
+      const birdie = r.giver, pl = G.player; const bank = doorOf('bank') || doorOf('home'); const home = doorOf('home');
+      const fx = Math.sin(bank.yaw), fz = Math.cos(bank.yaw);
+      await r.dialogue([
+        ['Birdie', "The bank vault has one door, three cameras and a floor sensor. I can blind the cameras if you kill the power.", 6],
+        ['Birdie', "Then it's the manager's keycard and forty-five seconds on the drill. I'll keep the line open.", 5.4],
+        ['Jay', "Forty-five seconds is a long time in a bank.", 2.6],
+        ['Birdie', "That's why you're not going in alone.", 2.6]
+      ]);
+      r.supply({ ammo: { ak47: 220, shotgun: 50, smg: 180, pistol: 80 }, equip: 'ak47', hp: 100, armor: 80 });
+      const ks = kerbSpot({ x: bank.x, z: bank.z }, 1, 140);
+      const car = r.car('van', ks.x, ks.z, ks.yaw, { color: 0x1c2436 }); car.name = 'Getaway van'; car.locked = false;
+      await r.enterVehicle(car, { text: 'Take the <b>getaway van</b> (F)', label: 'Van' });
+      // stage 1: power
+      const box = walkSpot(bank.x + fx * 26 + 6, bank.z + fz * 26 + 6, 2, 9);
+      await r.goto(box, { mode: 'foot', radius: 2.8, text: 'Cut the <b>power</b> at the service box', label: 'Power', color: 0x40ffd0, blipColor: '#40ffd0' });
+      G.fx.sparks(box.x, gy(box.x, box.z) + 1.3, box.z, 16); G.audio.play('explosion_small');
+      r.speak('Birdie', 'Cameras are dark. Move.', 2.8);
+      // stage 2: the manager's keycard
+      const mgr = suits(r, bank.x, bank.z, 1, { rmin: 2, rmax: 6, weapons: ['pistol'], sightRange: 60, health: 140 })[0];
+      mgr.name = 'Vault manager'; mgr.armor = 40; mgr.blipObj = r.blip({ entity: mgr, color: '#ff3030', label: 'Manager', flash: true, priority: 5 });
+      const mg = suits(r, bank.x, bank.z, 4, { rmin: 6, rmax: 18, weapons: ['smg', 'pistol', 'shotgun', 'pistol'], sightRange: 70, health: 100 });
+      for (const p of mg) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      await r.killAll([mgr, ...mg], { text: "Take the <b>manager's keycard</b>", label: 'Security' });
+      // stage 3: drill the vault
+      await r.goto({ x: bank.x, z: bank.z }, { mode: 'foot', radius: 6, text: 'Get to the <b>vault door</b>', label: 'Vault', color: 0x40ffd0, blipColor: '#40ffd0' });
+      r.cache(bank.x + 5, bank.z + 5, { health: 2, armor: 2, r: 6 });
+      const T = r.timer(45, 'Drilling the vault', () => { });
+      r.objective('Defend the <b>vault</b> while the drill runs');
+      const waves = [];
+      let wt = 5, n = 0;
+      r.tick(dt => {
+        if (T.expired) return; wt -= dt; if (wt > 0) return; wt = 12; n++;
+        const w = suits(r, bank.x, bank.z, 2 + Math.min(2, n), { rmin: 12, rmax: 26, weapons: ['smg', 'ak47', 'pistol', 'shotgun'], sightRange: 80, health: 100 });
+        for (const p of w) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+        waves.push(...w);
+        if (n === 1) r.speak('Birdie', "They know we're here! Hold the door!", 3);
+      });
+      await r.wait(() => T.expired);
+      r.clearTimer();
+      r.speak('Birdie', "Vault's open! Take everything and run!", 3.2);
+      for (const p of waves) if (!p.dead && !p.blipObj) p.blipObj = r.blip({ entity: p, color: '#ff3030', label: 'Security', priority: 3 });
+      await r.wait(() => waves.filter(p => !p.dead).length <= 1, { timeout: 30 }).catch(() => { });
+      // stage 4: escape
+      G.police.setStars(3);
+      r.objective('Escape the bank with the <b>crown ledger</b>');
+      await r.goto(home, { mode: 'vehicle', radius: 8, slow: 12, text: 'Get the <b>ledger</b> to Grove Street', label: 'Home', color: 0xffd040, blipColor: '#ffd040' });
+      await r.loseWanted('Lose the <b>cops</b>');
+      await r.dialogue([
+        ['Birdie', "We did it. Every page. Wexler's whole empire, in the back of the van.", 4.8],
+        ['Ray', "Then tonight we finish it. She'll be at her tower when the news breaks. We go in before she can run.", 5.8]
+      ]);
+      car.mission = false; car.owner = 'player';
+      r.reward(12000, 12);
+    }
+  },
+  // ============================================================================================ 23
+  {
+    id: 'm23', title: 'Kingmaker', needs: ['m22'], giver: 'ray', letter: 'R', color: 0xffd040, reward: 13000, respect: 12, density: 0.4,
+    where: homeWhere(4.5),
+    afterDone() { for (const n of ['idlewood', 'jefferson', 'eastls']) G.game.territories.add(n); },
+    async run(r) {
+      const ray = r.giver, pl = G.player; const home = doorOf('home');
+      await r.dialogue([
+        ['Ray', "One night, three corners. Wexler pays crews in Jefferson, Idlewood and East Los Santos to keep our people indoors.", 5.8],
+        ['Ray', "Take all three before sunrise and the whole east side belongs to the set. Fail, and they'll think we're soft.", 5.4],
+        ['Jay', "Three corners. One night. Let's move.", 2.6]
+      ]);
+      r.supply({ ammo: { ak47: 260, smg: 240, shotgun: 60, pistol: 100, grenade: 4 }, equip: 'ak47', hp: 100, armor: 80 });
+      const cody = ally(r, 'cody', ray.x + 2, ray.z, { weapon: 'smg', health: 200 });
+      const dre = ally(r, 'dre', ray.x - 2, ray.z, { weapon: 'ak47', health: 220 });
+      squad(r, [cody, dre]); r.keepAlive(cody, 'Cody'); r.keepAlive(dre, 'Dre');
+      const ks = kerbSpot({ x: home.x, z: home.z }, 1, 100);
+      const van = r.car('van', ks.x, ks.z, ks.yaw, { color: 0x1c2a22 }); van.name = 'Workhorse'; van.health = van.maxHealth = 1800;
+      await r.enterVehicle(van, { text: 'Take the wheel of the <b>van</b> (F)', label: 'Van' });
+      const T = r.timer(720, 'Before sunrise', () => { });
+      r.failIf(() => T.expired, 'Sunrise came before you took all three corners.');
+      const spots = [D('Jefferson'), D('Idlewood'), D('East Los Santos')];
+      for (let i = 0; i < spots.length; i++) {
+        const s = spots[i]; if (!s) continue;
+        await r.goto({ x: s.x, z: s.z }, { mode: 'vehicle', radius: 90, text: `Drive to <b>corner ${i + 1}/3</b>`, label: `Corner ${i + 1}`, color: 0xff3030, blipColor: '#ff3030', arrow: false });
+        const foes = spawnGang(r, s.x, s.z, 4, { gang: GANG.BLUELINE, weapons: ['smg', 'pistol', 'pistol', 'smg'], rmin: 8, rmax: 24, sightRange: 70, health: 95, skill: 0.35 });
+        const cap = spawnGang(r, s.x, s.z, 1, { gang: GANG.BLUELINE, weapons: ['ak47'], rmin: 6, rmax: 12, sightRange: 80, health: 190, blip: true, skill: 0.4 })[0];
+        cap.armor = 40; cap.name = 'Corner boss';
+        r.cache(s.x + 6, s.z + 4, { health: 1, armor: 1, r: 6 });
+        r.speak('Cody', i === 0 ? "Blue Line colours in Jefferson. Light them up!" : i === 1 ? 'Idlewood next. Move!' : 'Last corner. East side!', 3);
+        await r.killAll([...foes, cap], { text: `Take <b>corner ${i + 1}/3</b>`, label: 'Blue Line' });
+        G.game.paintTerritory(s.x, s.z, 120, GANG.EMERALD);
+        G.hud.notify(`Corner ${i + 1}/3 flipped to Emerald Row`, 'cash');
+      }
+      r.clearTimer();
+      await r.goto(home, { mode: 'vehicle', radius: 8, slow: 12, text: 'Return to <b>Grove Street</b>', label: 'Home', color: 0xffd040, blipColor: '#ffd040' });
+      await r.dialogue([
+        ['Ray', "The whole east side, green by dawn. That's how a legend is built.", 4.6],
+        ['Ray', "Now the tower. Get some shells. We go at noon.", 4]
+      ]);
+      for (const a of [cody, dre]) a.followPlayer = false;
+      van.mission = false; van.owner = 'player';
+      r.reward(13000, 12);
+    }
+  },
+  // ============================================================================================ 24
+  {
+    id: 'm24', title: 'The Hollow Crown', needs: ['m23'], giver: 'ray', letter: 'W', color: 0xffd040, reward: 30000, respect: 30, density: 0.2, keepWanted: false,
+    where: homeWhere(4.5), blocksShops: true,
+    afterDone() { G.hud.notify('Chapter II complete. Los Santos is yours.', 'cash'); },
+    async run(r) {
+      const ray = r.giver, pl = G.player; const home = doorOf('home'); const hq = doorOf('label') || doorOf('bank') || home; const term = doorOf('terminal') || home;
+      const hfx = Math.sin(home.yaw), hfz = Math.cos(home.yaw), hrx = Math.cos(home.yaw), hrz = -Math.sin(home.yaw);
+      G.sky.hour = 11.4; G.sky.setWeather('clear'); G.sky.lockWeather = true;
+      r.supply({ ammo: { ak47: 320, shotgun: 60, smg: 220, pistol: 120, rpg: 6, grenade: 6 }, equip: 'ak47', hp: 100, armor: 100 });
+      const cody = ally(r, 'cody', home.x + 2, home.z + 1, { weapon: 'smg', health: 220 });
+      const dre = ally(r, 'dre', home.x - 2, home.z + 1, { weapon: 'ak47', health: 240 });
+      await r.cutscene([
+        shot({ x: home.x + hfx * 16 + hrx * 4, z: home.z + hfz * 16 + hrz * 4, h: 4 }, { x: home.x + hfx * 3, z: home.z + hfz * 3, h: 1.8 }, 15, { to: { x: home.x + hfx * 11 + hrx * 7, z: home.z + hfz * 11 + hrz * 7, h: 2.6 }, fov: 48 })
+      ], [
+        ['Ray', "The ledger is out. Wexler's buyers are already running. She's cornered in her own tower.", 5.8],
+        ['Ray', "Cody and Dre ride with you. Go up there and end it — for Marcus, for Nia, for every corner she bought.", 6.2],
+        ['Jay', "This is the last one. Let's finish it.", 2.8]
+      ], { fadeIn: false });
+      squad(r, [cody, dre]); r.keepAlive(cody, 'Cody'); r.keepAlive(dre, 'Dre');
+      const ks = kerbSpot({ x: home.x, z: home.z }, 1, 100);
+      const van = r.car('van', ks.x, ks.z, ks.yaw, { color: 0x1c2a22 }); van.name = 'Workhorse'; van.health = van.maxHealth = 2200;
+      await r.enterVehicle(van, { text: 'Take the wheel of the <b>van</b> (F)', label: 'Van' });
+      G.audio.radio.set(2);
+      await r.goto({ x: hq.x, z: hq.z }, { mode: 'any', radius: 90, text: 'Drive to the <b>Halcyon tower</b>', label: 'Halcyon tower', color: 0xff3030, blipColor: '#ff3030', arrow: false });
+      const g1 = suits(r, hq.x, hq.z, 6, { rmin: 10, rmax: 30, weapons: ['smg', 'pistol', 'ak47', 'shotgun'], sightRange: 70 });
+      for (const p of g1) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      r.speak('Cody', 'Lobby security! Take them!', 3);
+      await r.killAll(g1, { text: 'Break the <b>tower security</b>', label: 'Security' });
+      r.cache(hq.x + 6, hq.z + 6, { health: 2, armor: 2, r: 7 });
+      const g2 = suits(r, hq.x, hq.z, 6, { rmin: 8, rmax: 24, weapons: ['ak47', 'shotgun', 'smg', 'pistol'], sightRange: 80 });
+      const sv = laneSpot({ x: hq.x + 70, z: hq.z + 30 }, 1, 240);
+      const sv2 = hostileCar(r, 'suv', sv.x, sv.z, sv.yaw, { n: 2, gang: 0, weapon: 'smg', speed: 28, blip: true, color: 0x101018 });
+      for (const p of g2) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      r.speak('Dre', 'Roof team coming down! Hold!', 3);
+      await r.killAll([...g2, ...sv2.peds], { text: 'Hold against the <b>roof team</b>', label: 'Security' });
+      // Wexler
+      const wx = besideDoor('label', 0, 4) || { x: hq.x, z: hq.z };
+      const wxr = r.ped({ x: wx.x, z: wx.z, role: 'script', appearance: look('wexler'), name: 'Vivian Wexler', weapon: 'pistol', ammo: 300, health: 260 });
+      wxr.armor = 60; wxr.invincible = true; wxr.script = { type: 'stand', look: pl };
+      const marsh = r.ped({ x: wx.x + 1.4, z: wx.z + 0.6, role: 'script', appearance: look('marsh'), name: 'Marsh', weapon: 'ak47', ammo: 999, health: 300 });
+      marsh.armor = 60; marsh.script = { type: 'stand', look: pl };
+      await r.cutscene([
+        twoShot(wxr, marsh, 5.5, { dist: 5.2, side: 1, drift: 0.3 }),
+        shot({ x: pl.x + 2, z: pl.z + 2, h: 1.6 }, { x: wx.x, z: wx.z, h: 1.6 }, 6, { fov: 42 })
+      ], [
+        ['Wexler', "The Mercer boy. You've cost me a great deal of money tonight.", 5],
+        ['Jay', "You took my sister. You burned my block. It's over.", 4],
+        ['Wexler', "Marsh, please.", 2]
+      ]);
+      marsh.role = 'enemy'; marsh.hostile = true; marsh.target = pl; marsh.setMode('attack', 999); marsh.aggroT = 999; marsh.sightRange = 90;
+      const guards = suits(r, hq.x, hq.z, 3, { rmin: 8, rmax: 20, weapons: ['smg', 'pistol', 'shotgun'], sightRange: 90 });
+      for (const p of guards) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      // she runs for her car
+      const esc = laneSpot({ x: hq.x + 30, z: hq.z + 20 }, 1, 220);
+      const limo = r.car('limo', esc.x, esc.z, esc.yaw, { color: 0x0a0a0e }); limo.name = "Wexler's limo"; limo.health = limo.maxHealth = 2400; limo.locked = true;
+      const ldrv = r.ped({ x: esc.x, z: esc.z, role: 'enemy', hostile: true, appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), weapon: 'pistol', ammo: 999, health: 120 }); ldrv.sightRange = 0; ldrv.enterVehicle(limo, 0, true);
+      wxr.script = { type: 'goto', x: limo.x, z: limo.z, radius: 2.6, speed: 5.6, onArrive: () => { wxr.enterVehicle(limo, 1, true); } };
+      G.hud.subtitle('Wexler is running for her car!', 2.6, 'Ray');
+      await r.sleep(1.6);
+      if (!wxr.vehicle) wxr.enterVehicle(limo, 1, true);
+      const lai = new DriverAI(limo, 'goto', { dest: { x: term.x, z: term.z }, cruise: 32, aggressive: true, ignoreLights: true, stopDist: 16 });
+      const lb = r.blip({ entity: limo, color: '#ff3030', label: 'Wexler', flash: true, priority: 5 }); limo.blipObj = lb;
+      r.objective('Chase <b>Wexler</b> to the airport');
+      G.police.setStars(2);
+      let lbail = false;
+      r.tick(dt => {
+        if (lbail) return;
+        if (limo.health < limo.maxHealth * 0.4 || limo.wrecked || lai.arrived || !limo.driver || limo.driver.dead) {
+          lbail = true; lai.setMode('idle'); limo.input.handbrake = true; limo.locked = false;
+          for (const p of limo.occupants()) p.exitVehicle(false);
+        }
+        const d = Math.hypot(limo.x - (pl.vehicle || pl).x, limo.z - (pl.vehicle || pl).z);
+        r._wd = (d > 430 && !lbail ? (r._wd || 0) + dt : 0); if (r._wd > 16) r.abortAll(FAIL('Wexler reached the airport ahead of you.'));
+      });
+      await r.wait(() => lbail);
+      r.removeBlip(lb);
+      r.cache(term.x + 6, term.z + 6, { health: 2, armor: 1, r: 7 });
+      // helicopter finale: she makes the chopper
+      const hs = laneSpot({ x: term.x + 30, z: term.z + 10 }, 1, 220);
+      const heli = r.car('policeheli', hs.x, hs.z, 0, { color: 0x1a1a22 }); heli.y = gy(hs.x, hs.z) + 8; heli.health = heli.maxHealth = 1000; heli.name = "Wexler's helicopter"; heli.sleeping = false;
+      wxr.script = { type: 'goto', x: heli.x, z: heli.z, radius: 2.6, speed: 6.2, onArrive: () => { wxr.enterVehicle(heli, 1, true); } };
+      r.speak('Ray', "She's going for a chopper! Bring it down, Jay — the launcher!", 4);
+      r.supply({ ammo: { rpg: 8 }, equip: 'rpg', hp: 100, armor: 100 });
+      await r.sleep(2.4);
+      const hb = r.blip({ entity: heli, color: '#ff3030', label: 'Wexler', flash: true, priority: 5 }); heli.blipObj = hb;
+      const hopt = { to: { x: heli.x, z: heli.z }, orbit: 0, height: gy(hs.x, hs.z) + 9, speed: 8, target: pl, weapon: 'smg', dmgMul: 0.25, fireRate: 0.5 };
+      pilotHeli(r, heli, hopt);
+      r.tick(dt => {
+        if (hopt.fleeFrom) return;
+        if (heli.health < heli.maxHealth * 0.55) { hopt.fleeFrom = () => ({ x: pl.x, z: pl.z }); hopt.to = null; hopt.speed = 16; hopt.height = heli.y + 30; hopt.rise = 1.2; G.hud.subtitle('The chopper is climbing! Bring it down!', 3, 'Ray'); }
+      });
+      let away = 0;
+      r.tick(dt => { if (heli.exploded) return; const d = Math.hypot(heli.x - pl.x, heli.z - pl.z); away = d > 520 ? away + dt : 0; if (away > 10) r.abortAll(FAIL('Wexler escaped by air.')); });
+      await r.destroy([heli], { text: "Shoot down <b>Wexler's helicopter</b>" });
+      r.removeBlip(hb);
+      if (!wxr.dead) { wxr.invincible = false; wxr.die({}); }
+      G.police.clear();
+      // epilogue
+      await r.sleep(1.6);
+      G.audio.radio.set(-1);
+      G.hud.fade(1, 900); await sleep(1000);
+      G.game.teleport(home.x + Math.sin(home.yaw) * 6, home.z + Math.cos(home.yaw) * 6, home.yaw + Math.PI);
+      G.sky.hour = 17.4; G.sky.setWeather('clear'); G.sky.lockWeather = false;
+      const rayE = r.ped({ x: home.x + 3, z: home.z + 4, role: 'script', appearance: look('ray'), name: 'Ray' });
+      const niaE = r.ped({ x: home.x + 4.5, z: home.z + 3, role: 'script', appearance: look('nia'), name: 'Nia' });
+      rayE.script = { type: 'stand', look: G.player }; niaE.script = { type: 'stand', look: G.player };
+      G.world.update(0, home.x, home.z, 60);
+      await r.cutscene([
+        shot({ x: home.x + hfx * 15 + hrx * 4, z: home.z + hfz * 15 + hrz * 4, h: 4 }, { x: home.x + hfx * 3.5, z: home.z + hfz * 3.5, h: 1.6 }, 11, { to: { x: home.x + hfx * 10 + hrx * 7, z: home.z + hfz * 10 + hrz * 7, h: 2.6 }, fov: 45 }),
+        shot({ x: home.x + hfx * 9 - hrx * 6, z: home.z + hfz * 9 - hrz * 6, h: 2 }, { x: home.x + hfx * 3.5, z: home.z + hfz * 3.5, h: 1.6 }, 11, { fov: 38 })
+      ], [
+        ['Nia', "You keep coming back for this city.", 3],
+        ['Jay', "Somebody has to. This one's ours again.", 3.6],
+        ['Ray', "Wexler's money is frozen. Her tower is a crime scene. And the set owns the east side, end to end.", 6.2],
+        ['Nia', "Marcus would've loved this. All of it green.", 3.6],
+        ['Jay', "Los Santos doesn't change. But it remembers who stood up for it.", 5]
+      ], { fadeIn: false });
+      G.hud.big('THE HOLLOW CROWN', '', 'Chapter II complete · The city is yours', 9);
+      await r.sleep(6);
+      r.reward(30000, 30);
+    }
+  }
+];

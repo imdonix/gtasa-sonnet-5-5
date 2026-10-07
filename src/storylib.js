@@ -52,7 +52,7 @@ export function gy(x, z) { return G.world.groundY(x, z); }
 export function P3(x, z, h = 0) { return { x, y: G.world.groundY(x, z) + h, z }; }
 
 // ---- character appearances
-const SEEDS = { ray: 11, marcus: 23, nia: 37, tee: 41, harlan: 53, calloway: 67, duke: 79, jay: 97, park: 101, cody: 113, dre: 127, mack: 131, pak: 137, sal: 139 };
+const SEEDS = { ray: 11, marcus: 23, nia: 37, tee: 41, harlan: 53, calloway: 67, duke: 79, jay: 97, park: 101, cody: 113, dre: 127, mack: 131, pak: 137, sal: 139, wexler: 149, birdie: 151, hollis: 157, marsh: 163, ellis: 167, sol: 173 };
 export function look(name) {
   const R = G.models.peds.randomAppearance;
   name = String(name || '').toLowerCase();
@@ -71,6 +71,13 @@ export function look(name) {
     case 'mack': return { ...R(rng, { role: 'worker', gender: 'm' }), gender: 'm', skin: 0xb88660, hair: 0x3a2a1a, hairStyle: 'short', shirt: 0xe07a30, shirtType: 'vest', pants: 0x3a4658, hat: 'hardhat', hatColor: 0xf0c020, glasses: false, build: 'big', scale: 1.04 };
     case 'pak': return { ...R(rng, { role: 'civ', gender: 'm' }), gender: 'm', skin: 0xd8b088, hair: 0xb8b8b8, hairStyle: 'short', shirt: 0xf2efe6, shirtType: 'tee', pants: 0x5a5a66, hat: 'none', glasses: true, build: 'normal', scale: 0.96 };
     case 'sal': return { ...R(rng, { role: 'civ', gender: 'm' }), gender: 'm', skin: 0x6a4028, hair: 0x111111, hairStyle: 'bald', shirt: 0xd04030, shirtType: 'tank', pants: 0x222630, hat: 'none', glasses: false, build: 'big', scale: 1.08 };
+    // ---- Chapter II: the Hollow Crown
+    case 'wexler': return { ...R(rng, { role: 'business', gender: 'f' }), gender: 'f', skin: 0xdcb89a, hair: 0xd8d4cc, hairStyle: 'bun', shirt: 0x14141c, shirtType: 'suit', pants: 0x14141c, shoes: 0x3a2a20, hat: 'none', glasses: true, bandana: null, build: 'slim', scale: 1.0 };
+    case 'birdie': return { ...R(rng, { role: 'civ', gender: 'f' }), gender: 'f', skin: 0x9a6a44, hair: 0x22c8c8, hairStyle: 'mohawk', shirt: 0x22242e, shirtType: 'hoodie', pants: 0x191921, hat: 'beanie', hatColor: 0x2a2a3a, glasses: true, bandana: null, build: 'slim', scale: 0.95 };
+    case 'hollis': return { ...R(rng, { role: 'worker', gender: 'm' }), gender: 'm', skin: 0x6a4028, hair: 0x111111, hairStyle: 'short', shirt: 0xd8a020, shirtType: 'vest', pants: 0x3a4658, hat: 'cap', hatColor: 0x24304a, glasses: false, build: 'big', scale: 1.05 };
+    case 'marsh': return { ...R(rng, { role: 'business', gender: 'm' }), gender: 'm', skin: 0xd8b090, hair: 0x111111, hairStyle: 'bald', shirt: 0x15151c, shirtType: 'suit', pants: 0x15151c, hat: 'none', glasses: true, bandana: null, build: 'big', scale: 1.06 };
+    case 'ellis': return { ...R(rng, { role: 'civ', gender: 'm' }), gender: 'm', skin: 0xe0c0a0, hair: 0x8a6a3a, hairStyle: 'short', shirt: 0x6a7a9a, shirtType: 'jacket', pants: 0x2a2a34, hat: 'none', glasses: true, bandana: null, build: 'slim', scale: 0.98 };
+    case 'sol': return { ...R(rng, { role: 'gangster', gang: 4, gender: 'm' }), gender: 'm', skin: 0x8a5a38, hair: 0x111111, hairStyle: 'short', shirt: 0x2450b0, shirtType: 'tee', pants: 0x1a1a22, hat: 'none', bandana: 0x2a52ff, glasses: false, build: 'big', scale: 1.04 };
     default: return R(rng, { role: 'civ' });
   }
 }
