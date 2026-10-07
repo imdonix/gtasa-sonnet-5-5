@@ -115,7 +115,9 @@ async function tailSegment(r, from, to, name, o = {}) {
   const tn = G.map.nearestRoad(to.x, to.z, 300); const tp = tn ? { x: tn.x, z: tn.z } : to;
   const ai = new DriverAI(tgt.car, 'idle', {});
   let started = false, waitT = o.waitT ?? 0;
-  const startAi = () => { if (started) return; started = true; ai.setMode('goto', { dest: { x: tp.x, z: tp.z }, cruise: o.cruise ?? 17, stopDist: 14 }); };
+  // the target has somewhere to be: it runs the lights and drives a little quicker than traffic
+  const startAi = () => { if (started) return; started = true; ai.setMode('goto', { dest: { x: tp.x, z: tp.z }, cruise: o.cruise ?? 20, stopDist: 14, ignoreLights: true, speedFactor: 1.05 }); };
+  ai.ignoreLights = true; ai.speedFactor = 1.05;
   if (waitT <= 0) startAi();
   let done = false, lost = 0, close = 0;
   const tw = { fn: () => tgt.drv.dead || tgt.car.wrecked, reason: name + ' was taken out.' };
@@ -511,7 +513,7 @@ export const STORY4 = [
       for (let i = 0; i < segs.length; i++) {
         const s = segs[i]; if (!s.from || !s.to) { r.speak('Tee', 'I lost the feed on that one.', 2.6); continue; }
         if (i > 0) r.speak('Tee', `Next one: ${s.name}. Watch for the pickup.`, 3.4);
-        await tailSegment(r, s.from, s.to, s.name, { cruise: 16 + i * 2, target: i === 0 ? tgt0 : null, waitT: i === 0 ? 0.5 : 0, ahead: 10 });
+        await tailSegment(r, s.from, s.to, s.name, { cruise: 20 + i * 2, target: i === 0 ? tgt0 : null, waitT: i === 0 ? 0.5 : 0, ahead: 10 });
         await r.sleep(0.8);
         r.speak(s.name, i === 0 ? '...tell the boss the books are clean.' : i === 1 ? '...move it to the vault tonight.' : "...the vault's ready. No names on the door.", 3.2);
         await r.sleep(1.2);
