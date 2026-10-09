@@ -833,7 +833,7 @@ export const STORY4 = [
       const ray = r.giver, pl = G.player; const home = doorOf('home'); const hq = doorOf('label') || doorOf('bank') || home; const term = doorOf('terminal') || home;
       const hfx = Math.sin(home.yaw), hfz = Math.cos(home.yaw), hrx = Math.cos(home.yaw), hrz = -Math.sin(home.yaw);
       G.sky.hour = 11.4; G.sky.setWeather('clear'); G.sky.lockWeather = true;
-      r.supply({ ammo: { ak47: 320, shotgun: 60, smg: 220, pistol: 120, rpg: 6, grenade: 6 }, equip: 'ak47', hp: 100, armor: 100 });
+      r.supply({ ammo: { ak47: 420, shotgun: 60, smg: 260, pistol: 120, rpg: 10, grenade: 6 }, equip: 'ak47', hp: 100, armor: 100 });
       const cody = ally(r, 'cody', home.x + 2, home.z + 1, { weapon: 'smg', health: 220 });
       const dre = ally(r, 'dre', home.x - 2, home.z + 1, { weapon: 'ak47', health: 240 });
       await r.cutscene([
@@ -877,50 +877,56 @@ export const STORY4 = [
       marsh.role = 'enemy'; marsh.hostile = true; marsh.target = pl; marsh.setMode('attack', 999); marsh.aggroT = 999; marsh.sightRange = 90;
       const guards = suits(r, hq.x, hq.z, 3, { rmin: 8, rmax: 20, weapons: ['smg', 'pistol', 'shotgun'], sightRange: 90 });
       for (const p of guards) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
-      // she runs for her car
+      // she runs for her armoured car and a convoy forms up around her
       const esc = laneSpot({ x: hq.x + 30, z: hq.z + 20 }, 1, 220);
-      const limo = r.car('limo', esc.x, esc.z, esc.yaw, { color: 0x0a0a0e }); limo.name = "Wexler's limo"; limo.health = limo.maxHealth = 2400; limo.locked = true;
+      const limo = r.car('limo', esc.x, esc.z, esc.yaw, { color: 0x0a0a0e }); limo.name = "Wexler's limo";
+      limo.health = limo.maxHealth = 6000; limo.locked = true;
       const ldrv = r.ped({ x: esc.x, z: esc.z, role: 'enemy', hostile: true, appearance: G.models.peds.randomAppearance(Math.random, { role: 'business' }), weapon: 'pistol', ammo: 999, health: 120 }); ldrv.sightRange = 0; ldrv.enterVehicle(limo, 0, true);
       wxr.script = { type: 'goto', x: limo.x, z: limo.z, radius: 2.6, speed: 5.6, onArrive: () => { wxr.enterVehicle(limo, 1, true); } };
       G.hud.subtitle('Wexler is running for her car!', 2.6, 'Ray');
       await r.sleep(1.6);
       if (!wxr.vehicle) wxr.enterVehicle(limo, 1, true);
-      const lai = new DriverAI(limo, 'goto', { dest: { x: term.x, z: term.z }, cruise: 32, aggressive: true, ignoreLights: true, stopDist: 16 });
-      const lb = r.blip({ entity: limo, color: '#ff3030', label: 'Wexler', flash: true, priority: 5 }); limo.blipObj = lb;
-      r.objective('Chase <b>Wexler</b> to the airport');
+      const lai = new DriverAI(limo, 'goto', { dest: { x: term.x, z: term.z }, cruise: 34, aggressive: true, ignoreLights: true, stopDist: 18 });
+      const lb = r.blip({ entity: limo, color: '#ff3030', label: "Wexler's limo", flash: true, priority: 5 }); limo.blipObj = lb;
       G.police.setStars(2);
+      r.objective("Chase <b>Wexler's convoy</b> — wreck her limo");
       let lbail = false;
+      // her security rides shotgun, and more cars keep joining the chase
+      const convoy = [];
+      const spawnEscort = () => {
+        const s = laneSpot({ x: limo.x + (Math.random() - 0.5) * 70, z: limo.z + (Math.random() - 0.5) * 70 }, 1, 220);
+        const hc = hostileCar(r, pick(['suv', 'muscle', 'coupe', 'sedan']), s.x, s.z, s.yaw, { n: 2, gang: 0, weapon: pick(['smg', 'pistol', 'ak47']), mode: 'follow', speed: 32, blip: false, color: 0x101018, health: 90, noBail: true });
+        hc.v.ai.setMode('follow', { leader: limo, gap: 13 }); hc.v.ai.aggressive = true; hc.v.ai.ramTarget = true;
+        convoy.push(hc);
+      };
+      spawnEscort(); spawnEscort();
+      let escT = 7;
       r.tick(dt => {
         if (lbail) return;
-        if (limo.health < limo.maxHealth * 0.4 || limo.wrecked || lai.arrived || !limo.driver || limo.driver.dead) {
+        escT -= dt; if (escT <= 0 && convoy.length < 8) { escT = 9; spawnEscort(); G.hud.subtitle('More of her security!', 2.2, 'Cody'); }
+        G.hud.counter(`Convoy: ${convoy.filter(c => !c.v.wrecked).length} cars`);
+      });
+      r.tick(dt => {
+        if (lbail) return;
+        if (limo.health < limo.maxHealth * 0.3 || limo.wrecked || lai.arrived || !limo.driver || limo.driver.dead) {
           lbail = true; lai.setMode('idle'); limo.input.handbrake = true; limo.locked = false;
           for (const p of limo.occupants()) p.exitVehicle(false);
         }
         const d = Math.hypot(limo.x - (pl.vehicle || pl).x, limo.z - (pl.vehicle || pl).z);
-        r._wd = (d > 430 && !lbail ? (r._wd || 0) + dt : 0); if (r._wd > 16) r.abortAll(FAIL('Wexler reached the airport ahead of you.'));
+        r._wd = (d > 500 && !lbail ? (r._wd || 0) + dt : 0); if (r._wd > 22) r.abortAll(FAIL("Wexler's convoy got away."));
       });
       await r.wait(() => lbail);
-      r.removeBlip(lb);
-      r.cache(term.x + 6, term.z + 6, { health: 2, armor: 1, r: 7 });
-      // helicopter finale: she makes the chopper
-      const hs = laneSpot({ x: term.x + 30, z: term.z + 10 }, 1, 220);
-      const heli = r.car('policeheli', hs.x, hs.z, 0, { color: 0x1a1a22 }); heli.y = gy(hs.x, hs.z) + 8; heli.health = heli.maxHealth = 1000; heli.name = "Wexler's helicopter"; heli.sleeping = false;
-      wxr.script = { type: 'goto', x: heli.x, z: heli.z, radius: 2.6, speed: 6.2, onArrive: () => { wxr.enterVehicle(heli, 1, true); } };
-      r.speak('Ray', "She's going for a chopper! Bring it down, Jay — the launcher!", 4);
-      r.supply({ ammo: { rpg: 8 }, equip: 'rpg', hp: 100, armor: 100 });
-      await r.sleep(2.4);
-      const hb = r.blip({ entity: heli, color: '#ff3030', label: 'Wexler', flash: true, priority: 5 }); heli.blipObj = hb;
-      const hopt = { to: { x: heli.x, z: heli.z }, orbit: 0, height: gy(hs.x, hs.z) + 9, speed: 8, target: pl, weapon: 'smg', dmgMul: 0.25, fireRate: 0.5 };
-      pilotHeli(r, heli, hopt);
-      r.tick(dt => {
-        if (hopt.fleeFrom) return;
-        if (heli.health < heli.maxHealth * 0.55) { hopt.fleeFrom = () => ({ x: pl.x, z: pl.z }); hopt.to = null; hopt.speed = 16; hopt.height = heli.y + 30; hopt.rise = 1.2; G.hud.subtitle('The chopper is climbing! Bring it down!', 3, 'Ray'); }
-      });
-      let away = 0;
-      r.tick(dt => { if (heli.exploded) return; const d = Math.hypot(heli.x - pl.x, heli.z - pl.z); away = d > 520 ? away + dt : 0; if (away > 10) r.abortAll(FAIL('Wexler escaped by air.')); });
-      await r.destroy([heli], { text: "Shoot down <b>Wexler's helicopter</b>" });
-      r.removeBlip(hb);
-      if (!wxr.dead) { wxr.invincible = false; wxr.die({}); }
+      r.removeBlip(lb); G.hud.counter(null);
+      r.cache(limo.x + 6, limo.z + 6, { health: 2, armor: 2, r: 7 });
+      // final stand: Wexler, Marsh and the surviving convoy crew
+      wxr.invincible = false; wxr.health = wxr.maxHealth = 900; wxr.armor = 80; wxr.role = 'enemy'; wxr.hostile = true; wxr.script = null; wxr.target = pl; wxr.setMode('attack', 999); wxr.aggroT = 999; wxr.sightRange = 95; wxr.give('smg', 400, true);
+      marsh.health = marsh.maxHealth = 500; marsh.armor = 80; marsh.role = 'enemy'; marsh.hostile = true; marsh.target = pl; marsh.setMode('attack', 999); marsh.aggroT = 999; marsh.sightRange = 95;
+      const bodyguards = suits(r, limo.x, limo.z, 5, { rmin: 6, rmax: 22, weapons: ['smg', 'ak47', 'pistol', 'shotgun'], sightRange: 95, health: 120 });
+      for (const p of bodyguards) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
+      r.speak('Wexler', "You want the crown, Mercer? Come and take it.", 4);
+      await r.killAll([wxr, marsh, ldrv, ...bodyguards], { text: 'End it: take down <b>Wexler</b> and her crew', label: 'Targets' });
+      // stand down whatever is left of the convoy before the epilogue
+      for (const c of convoy) { if (c.v.ai) c.v.ai.setMode('idle'); c.v.input.handbrake = true; for (const p of c.peds) { if (!p.dead) { p.hostile = false; p.aggroT = 0; p.role = 'civ'; p.setMode('walk'); p.path = null; } } }
       G.police.clear();
       // epilogue
       await r.sleep(1.6);
