@@ -35,8 +35,9 @@ Any static server works — it's just `index.html` + `src/` + `assets/` + `lib/`
 
 | | |
 |---|---|
-| ![title](assets/screenshots/title.png) | ![city](assets/screenshots/city.png) |
-| ![heist](assets/screenshots/heist.png) | ![garage](assets/screenshots/garage.png) |
+| ![title](assets/screenshots/title.png) | ![driving](assets/screenshots/driving_city.png) |
+| ![coast road](assets/screenshots/driving_coast.png) | ![police chase](assets/screenshots/driving_chase.png) |
+| ![bank heist](assets/screenshots/heist.png) | ![Pay 'n' Spray](assets/screenshots/garage.png) |
 
 ## Notes
 
