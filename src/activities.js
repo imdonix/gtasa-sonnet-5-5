@@ -1,10 +1,9 @@
-// Side activities: spray tags (collectibles), taxi fares, vigilante, street races.
+// Side activities: spray tags (collectibles), taxi fares, vigilante duty.
 import * as THREE from 'three';
 import { G } from './state.js';
 import { Ped } from './peds.js';
 import { DriverAI } from './driverai.js';
-import { clamp, dist2, rrange, pick, mulberry32, TAU, fmtMoney, lerp } from './util.js';
-import { CLS, ZONE, GANG, edgePointAt } from './mapdata.js';
+import { clamp, dist2, rrange, pick, mulberry32, TAU } from './util.js';
 
 function tagTexture(kind, seed) {
   const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const r = mulberry32(seed);
@@ -79,9 +78,8 @@ export class Tags {
 // ---------------------------------------------------------------------------------------------------------------
 export class Activities {
   constructor() {
-    this.doneSet = new Set(); this.mode = null; this.taxi = null; this.vig = null; this.race = null; this.raceStarts = [];
+    this.doneSet = new Set(); this.mode = null; this.taxi = null; this.vig = null;
     this.nTimer = 0;
-    this.buildRaces();
     G.events.on('playerExitVehicle', () => { if (this.mode === 'taxi' || this.mode === 'vigilante') this.endDuty('You left the vehicle'); });
   }
   doneCount() { return this.doneSet.size; }
@@ -89,126 +87,11 @@ export class Activities {
   deserialize(a) { this.doneSet = new Set(a || []); }
   busyWithStory() { return G.missions && G.missions.active; }
 
-  // -------------------------------------------------- racing
-  buildRaces() {
-    const map = G.map; const rng = mulberry32(31337);
-    const nav = G.nav;
-    const defs = [{ id: 'race_a', name: 'Jefferson Sprint', near: 'Jefferson', laps: 1, reward: 2500 }, { id: 'race_b', name: 'Coast to Coast', near: 'Verona Beach', laps: 1, reward: 4000 }, { id: 'race_c', name: 'Downtown Dash', near: 'Pershing Square', laps: 1, reward: 3000 }];
-    for (const d of defs) {
-      const c = G.world.placement.districtCentre(d.near); if (!c) continue;
-      const nr = map.nearestRoad(c.x, c.z, 200); if (!nr) continue;
-      const startNode = map.nearestNode(nr.x, nr.z, 400, 3); if (!startNode) continue;
-      // pick 3 far waypoints nodes and chain routes
-      const nodes = map.nodes.filter(n => n.deg >= 3 && Math.hypot(n.x - startNode.x, n.z - startNode.z) > 250 && Math.hypot(n.x - startNode.x, n.z - startNode.z) < 850);
-      if (nodes.length < 3) continue;
-      const pts = []; let cur = startNode; const chain = [];
-      for (let k = 0; k < 3; k++) {
-        const target = nodes[Math.floor(rng() * nodes.length)]; const route = nav.route(cur.id, target.id); if (!route || !route.length) continue;
-        let id = cur.id;
-        for (const st of route) { const e = st.edge; const n = st.dir > 0 ? e.pts : e.pts.slice().reverse(); for (let s = 0; s < e.len; s += 55) { const f = st.dir > 0 ? s : e.len - s; const p = edgePointAt(e, clamp(f, 0, e.len), {}); chain.push({ x: p.x + (-p.tz) * 0 , z: p.z }); } }
-        cur = target;
-      }
-      if (chain.length < 6) continue;
-      // thin out
-      const cps = []; let last = null; for (const p of chain) { if (!last || Math.hypot(p.x - last.x, p.z - last.z) > 70) { cps.push({ x: p.x, z: p.z }); last = p; } }
-      if (cps.length < 6) continue;
-      const race = { ...d, start: { x: startNode.x, z: startNode.z }, cps: cps.slice(0, 16) };
-      race.blip = G.blips.add({ x: race.start.x, z: race.start.z, color: '#ffffff', text: 'R', icon: 'text', label: 'Street race: ' + d.name, priority: 0 });
-      race.marker = G.markers.add({ x: race.start.x, z: race.start.z, radius: 5.5, color: 0x70b8ff, vehicleOnly: true, once: false, onEnter: () => this.tryRace(race) });
-      this.raceStarts.push(race);
-    }
-  }
-  // quitToTitle() removes every marker in the world: restore the race start markers / blips when they are missing
-  heal() { if (this.race) return; for (const race of this.raceStarts) { if (race.marker && race.marker.dead) race.marker = G.markers.add({ x: race.start.x, z: race.start.z, radius: 5.5, color: 0x70b8ff, vehicleOnly: true, once: false, onEnter: () => this.tryRace(race) }); if (race.blip && !G.blips.list.includes(race.blip)) race.blip = G.blips.add({ x: race.start.x, z: race.start.z, color: '#ffffff', text: 'R', icon: 'text', label: 'Street race: ' + race.name, priority: 0 }); } }
-  tryRace(r) {
-    if (this.busyWithStory() || this.race || this.mode) return;
-    if (this.doneSet.has(r.id) && false) return;
-    if (G.police.stars > 0) { G.hud.notify('Lose the cops first'); return; }
-    this.startRace(r);
-  }
-  async startRace(r) {
-    const pl = G.player; const v = pl.vehicle; if (!v) return; if (v.isBike && v.type === 'bicycle') { G.hud.notify('Bring a real vehicle'); return; }
-    G.hud.notify('Race: ' + r.name);
-    // position racers on grid
-    const racers = []; const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
-    const n0 = G.map.nearestRoad(r.start.x, r.start.z, 50); const yaw = Math.atan2(n0 ? n0.tx : fx, n0 ? n0.tz : fz);
-    const first = r.cps[0]; const yawToFirst = Math.atan2(first.x - r.start.x, first.z - r.start.z);
-    const types = ['sports', 'muscle', 'coupe']; const colors = [0xd01c1c, 0x1c4ad0, 0xf0c020];
-    for (let i = 0; i < 3; i++) {
-      const off = (i - 1) * 4.2; const sx = r.start.x + Math.cos(yawToFirst) * off - Math.sin(yawToFirst) * (-8 - i * 2), sz = r.start.z - Math.sin(yawToFirst) * off - Math.cos(yawToFirst) * (-8 - i * 2);
-      const rv = G.vehicles.spawn(types[i], sx, sz, yawToFirst, { owner: 'mission', color: colors[i] }); rv.mission = true;
-      const d = new Ped({ x: sx, z: sz, role: 'civ', appearance: G.models.peds.randomAppearance(Math.random, { role: 'civ' }) }); d.mission = true; G.peds.add(d); d.enterVehicle(rv, 0, true);
-      const ai = new DriverAI(rv, 'goto', { dest: { x: first.x, z: first.z }, cruise: 40, stopDist: 14, aggressive: true, ignoreLights: true }); rv.ai = ai;
-      racers.push({ v: rv, ped: d, next: 0, lap: 0, finished: false, name: ['Red', 'Blue', 'Gold'][i] });
-    }
-    // player to grid
-    v.x = r.start.x; v.z = r.start.z; v.yaw = yawToFirst; v.vx = v.vz = 0; v.yawRate = 0;
-    const cps = r.cps; this.race = { r, racers, cps, pNext: 0, t: 0, started: false, place: 1, cdown: 3.99, markers: [], blip: null };
-    this.updateRaceMarkers();
-    G.hud.objective('Get ready…');
-  }
-  updateRaceMarkers() {
-    const R = this.race; if (!R) return;
-    for (const m of R.markers) G.markers.remove(m); R.markers = [];
-    if (R.blip) { G.blips.remove(R.blip); R.blip = null; }
-    const i = R.pNext; if (i >= R.cps.length) return;
-    const cp = R.cps[i]; const last = i === R.cps.length - 1;
-    R.markers.push(G.markers.add({ x: cp.x, z: cp.z, radius: 9, color: last ? 0xffff40 : 0x40c0ff, once: false, vehicleOnly: true, arrow: false }));
-    R.blip = G.blips.add({ x: cp.x, z: cp.z, color: last ? '#ffff40' : '#40c0ff', icon: 'dot', label: 'Checkpoint', priority: 2 });
-    const nxt = R.cps[i + 1]; if (nxt) { R.markers.push(G.markers.add({ x: nxt.x, z: nxt.z, radius: 5, color: 0x205080, once: false, arrow: false, vehicleOnly: true })); }
-  }
-  endRace(msg, won) {
-    const R = this.race; if (!R) return;
-    for (const m of R.markers) G.markers.remove(m); if (R.blip) G.blips.remove(R.blip);
-    for (const r of R.racers) { r.v.mission = false; r.v.ai && r.v.ai.setMode('traffic'); r.v.owner = 'traffic'; if (r.ped) r.ped.mission = false; }
-    G.hud.objective(''); G.hud.timer(null); G.hud.counter(null);
-    this.race = null;
-    if (msg) G.hud.big(msg, won ? '' : 'wasted', '', 3);
-  }
-  updateRace(dt) {
-    const R = this.race; if (!R) return; const pl = G.player; const v = pl.vehicle;
-    if (!v || pl.dead) { this.endRace('RACE ABANDONED', false); return; }
-    if (R.cdown > 0) {
-      const before = Math.ceil(R.cdown); R.cdown -= dt; const after = Math.ceil(R.cdown);
-      v.input.handbrake = true; pl.controlEnabled = false;
-      for (const r of R.racers) { r.v.input.handbrake = true; r.v.input.throttle = 0; }
-      if (after !== before && after > 0) { G.hud.big(String(after), '', '', 0.8); G.audio.play('menu_click'); }
-      if (R.cdown <= 0) { G.hud.big('GO!', '', '', 0.8); G.audio.play('ding'); pl.controlEnabled = true; v.input.handbrake = false; R.started = true; G.hud.objective('Race to the checkpoints!'); }
-      return;
-    }
-    R.t += dt; G.hud.timer('Time', R.t);
-    // player checkpoint
-    const cp = R.cps[R.pNext]; if (cp && Math.hypot(v.x - cp.x, v.z - cp.z) < 10) { R.pNext++; G.audio.play('ding'); this.updateRaceMarkers(); if (R.pNext >= R.cps.length) return this.finishRace(); }
-    // racers
-    for (const r of R.racers) {
-      if (r.finished) continue; const c = R.cps[r.next]; if (!c) { r.finished = true; r.time = R.t; R.place = R.place; continue; }
-      const ai = r.v.ai; r.v.input.handbrake = false;
-      if (ai.mode !== 'goto' || !ai.dest || ai.dest.x !== c.x) ai.setMode('goto', { dest: { x: c.x, z: c.z }, cruise: 38, stopDist: 1 });
-      ai.stopDist = 1; ai.cruise = 40 + clamp((R.pNext - r.next) * 3, -6, 10);
-      if (Math.hypot(r.v.x - c.x, r.v.z - c.z) < 14) { r.next++; const n = R.cps[r.next]; if (n) ai.dest = { x: n.x, z: n.z }; else { r.finished = true; r.time = R.t; } }
-      if (r.v.wrecked) { r.finished = true; r.time = 1e9; }
-    }
-    // position
-    let ahead = 0; for (const r of R.racers) if (!r.v.wrecked && (r.next > R.pNext || (r.next === R.pNext && (Math.hypot(r.v.x - (R.cps[r.next] || r.v).x, r.v.z - (R.cps[r.next] || r.v).z) < Math.hypot(v.x - (R.cps[R.pNext] || v).x, v.z - (R.cps[R.pNext] || v).z))))) ahead++;
-    R.place = ahead + 1; G.hud.counter(`Position ${R.place}/4 · Checkpoint ${Math.min(R.pNext + 1, R.cps.length)}/${R.cps.length}`);
-    if (R.racers.some(r => r.finished && r.time < 1e8) && R.pNext < R.cps.length && false) { }
-    if (R.racers.every(r => r.finished) && R.pNext < R.cps.length) { /* keep going, player can still finish */ }
-    if (R.racers.filter(r => r.finished && r.time < 1e8).length >= 3 && R.pNext < R.cps.length - 0 && R.t > 20) { this.endRace('RACE OVER - YOU LOST', false); }
-  }
-  finishRace() {
-    const R = this.race; const place = 1 + R.racers.filter(r => r.finished && r.time < 1e8).length;
-    const r = R.r; const pl = G.player;
-    if (place === 1) { pl.addMoney(r.reward); G.audio.play('mission_pass'); this.doneSet.add(r.id); this.endRace('RACE WON! +' + fmtMoney(r.reward), true); pl.respect += 4; }
-    else { const cons = place === 2 ? Math.floor(r.reward * 0.25) : 0; if (cons) pl.addMoney(cons); this.endRace('PLACE ' + place + (cons ? ' +' + fmtMoney(cons) : ''), place <= 2); }
-  }
-
   // -------------------------------------------------- taxi / vigilante duty
   update(dt) {
     if (G.tags) G.tags.update(dt);
-    this.updateRace(dt);
-    this.healT = (this.healT || 0) - dt; if (this.healT <= 0) { this.healT = 2; this.heal(); }
     const pl = G.player; const v = pl.vehicle;
-    if (!this.race && !this.busyWithStory()) {
+    if (!this.busyWithStory()) {
       if (v && v.driver === pl && pl.controlEnabled && G.input.wasPressed('KeyN')) {
         if (v.type === 'taxi') { if (this.mode === 'taxi') this.endDuty('Off duty'); else this.startTaxi(v); }
         else if (v.type === 'police' || v.type === 'swatvan') { if (this.mode === 'vigilante') this.endDuty('Off duty'); else this.startVigilante(v); }

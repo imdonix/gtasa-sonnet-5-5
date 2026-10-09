@@ -56,10 +56,9 @@ module.exports = async (c) => {
   ok('quitToTitle mid-mission: no active mission, title state', !q.active && q.state === 'title' && !q.cine, JSON.stringify(q));
   await c.eval(() => { game.startGame(false); });
   await c.wait(3800);
-  const nm = await c.eval(() => { const M = G.missions; return { active: M.active && M.active.def.id, shops: G.places.shops.filter(s => s.marker && !s.marker.dead).length, total: G.places.shops.length, races: G.activities.raceStarts.filter(r => r.marker && !r.marker.dead).length, nRaces: G.activities.raceStarts.length }; });
+  const nm = await c.eval(() => { const M = G.missions; return { active: M.active && M.active.def.id, shops: G.places.shops.filter(s => s.marker && !s.marker.dead).length, total: G.places.shops.length }; });
   ok('new game after quit: m01 auto-starts', nm.active === 'm01', JSON.stringify(nm));
   ok('new game after quit: shop markers restored', nm.shops >= 10 && nm.shops <= nm.total, JSON.stringify(nm));
-  ok('new game after quit: race markers restored', nm.races === nm.nRaces, JSON.stringify(nm));
 
   // ---- 4. save / load around missions
   await c.eval(() => { G.missions.abortAll(); G.player.invincible = true; });

@@ -34,7 +34,7 @@ bank heist and a helicopter finale. Plus 4 optional side quests and an open Los 
   (**Emerald Row**, Violet Kings, Los Soles, Blue Line), rival gang raids, recruitable homies (press G near Emerald Row members).
 * **Side content** — 4 side quests (after mission 4), random street events (accidents, muggings, chases, drive-bys), **weapon dealers** (walk up and press E to buy), food joints (health),
   **drive-in Pay 'n' Spray garages** (pull in, the roller door closes, the car comes out resprayed and heat is gone), a **safehouse save icon** (press E), spray-tag collectibles (28), taxi duty (N in a taxi),
-  vigilante duty (N in a police car), 3 street races, stats screen, full map with waypoint (M).
+  vigilante duty (N in a police car), stats screen, full map with waypoint (M).
 
 ### Controls
 | | |

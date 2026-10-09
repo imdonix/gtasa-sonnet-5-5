@@ -557,7 +557,7 @@ export class WorldEvents {
     const pl = G.player; if (!pl || pl.dead) return false;
     if (G.missions && G.missions.active) return false;
     if (G.police.stars > 0 || (G.missionDensity ?? 1) < 0.9) return false;
-    if (G.activities && (G.activities.mode || G.activities.race)) return false;
+    if (G.activities && G.activities.mode) return false;
     if (G.population && !G.population.enabled) return false;
     return true;
   }
