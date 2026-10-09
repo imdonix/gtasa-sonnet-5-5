@@ -178,7 +178,7 @@ const MEDIC = {
     const ks = kerbSpot({ x: dre.x, z: dre.z }, 1, 100);
     const car = r.car('sedan', ks.x, ks.z, ks.yaw, { color: 0x2d7a3c }); car.name = "Dre's sedan"; car.locked = false;
     r.keepAlive(car, "Dre's car");
-    const ally0 = dre; ally0.role = 'ally'; ally0.followPlayer = true; ally0.gang = 1; ally0.brave = false;
+    const ally0 = dre; ally0.role = 'ally'; ally0.followPlayer = true; ally0.gang = 1; ally0.brave = false; ally0.invincible = true;
     squad(r, [dre]);
     r.objective("Get in <b>Dre's sedan</b> (F)");
     await r.enterVehicle(car, { text: "Get in <b>Dre's sedan</b> (F)", label: "Dre's car" });

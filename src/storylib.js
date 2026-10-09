@@ -181,6 +181,8 @@ export function ally(r, who, x, z, o = {}) {
   const p = r.ped({ x, z, role: 'ally', gang: 1, appearance: look(who), name: who, weapon: o.weapon || 'pistol', ammo: 999, health: (o.health ?? 160) * 1.6 });
   p.armor = 60;
   p.followPlayer = o.follow ?? true; p.skillAcc = 0.6; p.canDrop = false; p.brave = true;
+  // story companions cannot be killed by stray fire (a scripted death clears this first)
+  p.invincible = true;
   if (p.followPlayer === false) p.mode = 'loiter';
   return p;
 }

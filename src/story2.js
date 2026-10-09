@@ -74,7 +74,7 @@ export const STORY2 = [
       r.clearTimer(); r.removeMarker(lotMark); r.removeBlip(lotBlip); r.objective('Finish off the last <b>guards</b>');
       for (const p of all) if (!p.dead && !p.blipObj) p.blipObj = r.blip({ entity: p, color: '#ff3030', label: 'Guard', priority: 3 });
       await r.wait(() => all.filter(p => !p.dead).length <= 1, { timeout: 25 }).catch(() => { });
-      tee.group.visible = true; tee.invincible = false; tee.role = 'ally'; tee.followPlayer = true; tee.script = null;
+      tee.group.visible = true; tee.role = 'ally'; tee.followPlayer = true; tee.script = null;
       r.speak('Tee', "Got it! Every payment, every account! Now let's get out of here!", 3.6);
       const ls = kerbSpot({ x: lotC.x, z: lotC.z }, 1, 60);
       const limo = r.car('limo', ls.x, ls.z, ls.yaw, { color: 0x0f0f14 }); limo.name = "Calloway's limo"; r.keepAlive(limo, 'The limo');
