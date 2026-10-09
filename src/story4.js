@@ -179,6 +179,28 @@ function makeVaultDoor() {
   const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.7, 0.24), mMat(0x8a9098)); bolt.position.set(3.3, 2.2, 0.25); pivot.add(bolt);
   pivot.userData.own = true; return pivot;
 }
+function makeBuoy() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 1.1, 10), mMat(0xd23a2a)); body.position.y = 0.5; g.add(body);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.22, 10), mMat(0xf0f0f0)); band.position.y = 0.9; g.add(band);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), mMat(0x8a9098)); pole.position.y = 2.2; g.add(pole);
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.55, 0.04), mMat(0xffb020)); flag.position.set(0.4, 3.1, 0); g.add(flag);
+  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18), new THREE.MeshBasicMaterial({ color: 0xffd040 })); lamp.position.y = 3.5; g.add(lamp);
+  g.userData.lamp = lamp; g.userData.own = true; return g;
+}
+function makeWreck() {
+  const g = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 5.0), mMat(0x2a3038)); hull.position.y = -0.3; hull.rotation.z = 0.26; g.add(hull);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 1.8), mMat(0x3a424c)); cabin.position.set(0.2, 0.25, -1.2); cabin.rotation.z = 0.26; g.add(cabin);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6), mMat(0x6a7078)); mast.position.set(0.5, 1.2, -0.6); mast.rotation.z = 0.26; g.add(mast);
+  g.userData.own = true; return g;
+}
+function makeWaterCase() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.44, 0.2), mMat(0xd8b020)); g.add(body);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.1, 0.22), mMat(0xc8a020)); lid.position.y = 0.22; g.add(lid);
+  g.userData.own = true; return g;
+}
 function makeLedgerCase() {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.5, 0.24), mMat(0x3a2a1a)); g.add(body);
@@ -385,7 +407,8 @@ export const STORY4 = [
       const hollis = r.giver, pl = G.player; const shop = doorOf('pier_shop') || doorOf('home'); const home = doorOf('home');
       const pier = L('pier');
       const px = pier ? pier.x : shop.x, pz = pier ? pier.z : shop.z;
-      const wp = deepWater(px, pz, 25, 85);
+      const wp = deepWater(px, pz, 18, 55);
+      const shore = walkSpot(px, pz, 6, 40);   // land at the dock, near the water
       G.sky.hour = 6.6; G.sky.setWeather('clear'); G.sky.lockWeather = true;
       await r.cutscene([
         twoShot(hollis, pl, 18.3, { dist: 4, side: 1, drift: 0.4 })
@@ -396,16 +419,48 @@ export const STORY4 = [
         ['Hollis', "They watch the marina. The moment you have it, they'll know.", 4.4]
       ], { fadeIn: false });
       r.supply({ ammo: { pistol: 60, smg: 120 }, hp: 100, armor: 40 });
-      const wreckBlip = r.blip({ x: wp.x, z: wp.z, color: '#39c4d8', label: 'Wreck', flash: true, priority: 5 });
+      // ---- the wreck: a buoy, a half-sunken hull and the case bobbing in the water
+      const buoy = r.prop(makeBuoy()); buoy.position.set(wp.x + 2.6, 0.1, wp.z + 1.6);
+      const wreck = r.prop(makeWreck()); wreck.position.set(wp.x + 6.5, -0.35, wp.z + 4.5); wreck.rotation.y = Math.random() * TAU;
+      const caseMesh = r.prop(makeWaterCase()); caseMesh.position.set(wp.x, 0.15, wp.z);
+      r.tick(dt => {
+        const t = G.time;
+        caseMesh.position.y = 0.15 + Math.sin(t * 1.7) * 0.1; caseMesh.rotation.y += dt * 0.7;
+        buoy.rotation.z = Math.sin(t * 1.1) * 0.09;
+        if (buoy.userData.lamp) buoy.userData.lamp.visible = Math.sin(t * 3) > -0.3;
+      });
+      // ---- dock crowd + guards (they are on the dock when you arrive)
+      for (let i = 0; i < 5; i++) {
+        const s = walkSpot(shore.x, shore.z, 3, 20);
+        const app = G.models.peds.randomAppearance(Math.random, { role: Math.random() < 0.5 ? 'worker' : 'tourist' });
+        const p = r.ped({ x: s.x, z: s.z, role: 'civ', appearance: app });
+        p.mode = 'walk'; p.path = null; p.walkSpeed = 1.15 + Math.random() * 0.4;
+      }
+      const guards = suits(r, shore.x, shore.z, 4, { rmin: 4, rmax: 18, weapons: ['smg', 'pistol', 'pistol', 'ak47'], sightRange: 85, health: 95 });
+      for (const g of guards) { g.hostile = false; g.role = 'script'; g.script = { type: 'stand' }; g.aggroT = 0; g.sightRange = 0; }
+      // ---- drive/walk to the dock
+      await r.goto(shore, { mode: 'any', radius: 12, text: 'Go to the <b>dock</b> by the Santa Maria pier', label: 'Dock', color: 0x39c4d8, blipColor: '#39c4d8', arrow: false });
+      // arrival cutscene: this is what you have to swim out for
+      const inl = { x: shore.x - wp.x, z: shore.z - wp.z }; const il = Math.hypot(inl.x, inl.z) || 1;
+      const perp = { x: -inl.z / il, z: inl.x / il };
+      await r.cutscene([
+        shot({ x: shore.x + inl.x / il * 4, z: shore.z + inl.z / il * 4, h: 3.2 }, { x: wp.x, z: wp.z, h: 0.7 }, 6.5, { fov: 52 }),
+        shot({ x: shore.x + perp.x * 12 + inl.x / il * 3, z: shore.z + perp.z * 12 + inl.z / il * 3, h: 3 }, { x: shore.x, z: shore.z, h: 1.4 }, 6.5, { to: { x: shore.x + perp.x * 8, z: shore.z + perp.z * 8, h: 2.4 }, fov: 50 })
+      ], [
+        ['Hollis', "There she is. The buoy marks the wreck — and the case is still floating beside it.", 5.2],
+        ['Jay', "Wexler's people are already on the dock.", 3],
+        ['Hollis', "Then give them something to look at. Go.", 3.4]
+      ], { fadeIn: false });
+      // the guards notice you and the marina wakes up
+      for (const g of guards) { if (g.dead) continue; g.role = 'enemy'; g.hostile = true; g.script = null; g.sightRange = 85; g.target = pl; g.setMode('attack', 999); g.aggroT = 999; }
+      const wreckBlip = r.blip({ x: wp.x, z: wp.z, color: '#39c4d8', label: 'Case', flash: true, priority: 5 });
       G.hud.notify('Water ahead — hold forward to swim.');
-      await r.goto(wp, { mode: 'any', radius: 3.6, text: 'Swim to the <b>wreck marker</b>', label: 'Wreck', color: 0x39c4d8, blipColor: '#39c4d8' });
-      await new Promise(res => { r.pickup('tag', wp.x, wp.z, { y: 0.2, radius: 5, onCollect: () => { r.removeBlip(wreckBlip); res(true); } }); r.objective('Grab the <b>ledger case</b>'); });
+      await r.goto(wp, { mode: 'any', radius: 3, text: 'Swim out to the <b>case</b> at the buoy', label: 'Case', color: 0x39c4d8, blipColor: '#39c4d8' });
+      if (caseMesh.parent) caseMesh.parent.remove(caseMesh);
+      r.removeBlip(wreckBlip); G.audio.play('pickup');
       r.speak('Hollis', "Got it? Now swim — they saw you!", 3.2);
-      // pier shooters + land chase
+      // ---- escape: back to shore, into the SUV, lose the heat
       G.police.setStars(2);
-      const pk = walkSpot(shop.x, shop.z, 4, 16);
-      const shooters = suits(r, pk.x, pk.z, 4, { rmin: 4, rmax: 16, weapons: ['smg', 'pistol', 'pistol', 'ak47'], sightRange: 90, health: 90 });
-      for (const p of shooters) { p.target = pl; p.setMode('attack', 999); p.aggroT = 999; }
       const gs = kerbSpot({ x: shop.x, z: shop.z }, 1, 80);
       const car = r.car('suv', gs.x, gs.z, gs.yaw, { color: 0x22404a }); car.name = 'Shore runner'; car.locked = false;
       r.blip({ entity: car, color: '#39c4d8', label: 'Shore car', flash: true, priority: 4 });
