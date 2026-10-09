@@ -49,6 +49,13 @@ jobs:
         with:
           path: _site
 
+      # the same assembled build is reused by the itch.io release job below
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-site
+          path: _site
+          retention-days: 7
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -58,3 +65,33 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # ------------------------------------------------------------------ itch.io
+  # Releases the browser build to https://imdonix.itch.io/lsr (channel: html5).
+  # Requires a repo secret named ITCH_IO_API holding your itch.io API key
+  # (Settings -> Secrets and variables -> Actions -> New repository secret).
+  itch:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: game-site
+          path: _site
+
+      - name: Install butler (itch.io CLI)
+        run: |
+          curl -L -o butler.zip https://broth.itch.ovh/butler/linux-amd64/LATEST/archive/default
+          unzip -q -o butler.zip -d butler
+          chmod +x butler/butler
+          butler/butler -V
+
+      - name: Push to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.ITCH_IO_API }}
+        run: |
+          if [ -z "$BUTLER_API_KEY" ]; then
+            echo "::error::Missing ITCH_IO_API secret — add your itch.io API key in repo secrets."
+            exit 1
+          fi
+          butler/butler push _site imdonix/lsr:html5 --userversion "${GITHUB_REF_NAME}-${GITHUB_SHA::7}"
